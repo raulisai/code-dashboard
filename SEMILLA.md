@@ -4,9 +4,22 @@
 
 Última actualización anterior: 2026-10-18, 00:05 Europe/Berlin. Autor: Codex (agente general: voz, partículas, continuidad y presentaciones).
 
-Última actualización: 2026-10-18, 00:19 Europe/Berlin. Autor: Codex (chat de proyecto compacto).
+Última actualización: 2026-10-18, 01:14 Europe/Berlin. Autor: Claude (cierre del agente general «vivo», tras el límite de Codex).
 
 ## 0. Estado en una línea
+
+**Agente general «vivo» terminado y publicado (18 octubre, Claude).** Codex lo
+implementó pero agotó su cupo verificando (run `20261017-221813-a55e72`, commit
+`245bd05` «con error»); sus cambios quedaron repartidos en commits de otros chats
+(`6427c04`, `4ebeba7`). En reposo solo esfera + icono + «Disponible»; el icono y
+la frase cambian con la actividad real (pruebas, Docker, Git, edición, web…).
+Sin saludos ni datos fijos: Actividad, Respuesta e historial se abren bajo
+demanda y conservan el formato. Cerrado por Claude: foco devuelto al cerrar los
+diálogos, historial anclado arriba con teclado en tableta/escritorio y prueba de
+voz adaptada al nuevo botón «Terminar». **168 Python + 15 frontend OK**,
+`GENERAL_KEYBOARD_OK` (390/360/1440) y `GENERAL_BROWSER_OK` (320/360/390/768/
+1440 y horizontal 740×390) con API simulada. Producción: healthy, HTTPS 200,
+API anónima 401, Origin ajeno 403.
 
 **Chat de proyecto compacto (18 octubre, Codex):** cabecera de 44 px con nombre
 y menú «…» para chats/proveedor/reinicio; micrófono de solo icono y modelo/esfuerzo
@@ -232,6 +245,15 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Agente general «vivo» (cierre 18 octubre)
+
+- Falta que el usuario lo pruebe en su celular (voz real, teclado real, giro).
+  Las pruebas de navegador usan API simulada y micrófono virtual: no se enviaron
+  tareas reales ni se gastó cuota. El aviso «Error 503» de las capturas lo provoca
+  la prueba a propósito (recuperación de borrador), no es un fallo.
+- La ejecución de Codex terminó con error de cupo; si se reintenta esa petición
+  no hace falta repetir el trabajo: ya está completo y publicado.
 
 ### Chat ergonómico (18 octubre)
 
@@ -561,6 +583,17 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Cierre del agente general «vivo» (Claude, 18 octubre)
+
+- `views/General.jsx` (`AgentDialog`): guarda el elemento que abrió el diálogo y
+  le devuelve el foco al desmontar (React retira el `<dialog>` antes de cerrarlo).
+- `general.css`: con `keyboard-open` en ≥1024 px el historial se ancla arriba
+  (`top: 20px; bottom: auto`) para no quedar detrás del teclado virtual.
+- `tools/verify_general_browser.cjs`: espera el botón «Terminar conversación» de
+  la barra de acciones en vez del antiguo `.voice-end`. Capturas en
+  `artifacts/general-responsive-20261018/`. Publicado con
+  `docker compose up -d --build --wait`; ambos servicios healthy.
 
 ### Chat ergonómico (18 octubre, Codex)
 

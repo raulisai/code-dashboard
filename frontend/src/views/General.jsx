@@ -281,9 +281,14 @@ export default function General() {
 function AgentDialog({className, label, onClose, children}) {
   const dialog = useRef(null);
   useEffect(() => {
-    const element = dialog.current, overflow = document.body.style.overflow;
+    // React retira el <dialog> del DOM antes de cerrarlo y el navegador ya no devuelve el foco: se hace aquí.
+    const element = dialog.current, overflow = document.body.style.overflow, opener = document.activeElement;
     element.showModal(); document.body.style.overflow = 'hidden';
-    return () => { if (element.open) element.close(); document.body.style.overflow = overflow; };
+    return () => {
+      if (element.open) element.close();
+      document.body.style.overflow = overflow;
+      if (opener?.isConnected && typeof opener.focus === 'function') opener.focus({preventScroll: true});
+    };
   }, []);
   const trapFocus = event => {
     if (event.key !== 'Tab' || event.target.closest('dialog') !== dialog.current) return;

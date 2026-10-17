@@ -202,7 +202,7 @@ async function checkLayout(page, name, width, height) {
       await page.waitForFunction(() => document.querySelector('.live-orb').dataset.state === 'listening', null, {timeout: 8000});
       await page.waitForTimeout(1500);
       await orb.click();
-      await page.waitForFunction(() => !document.querySelector('.pending-message') && document.querySelector('.voice-end'), null, {timeout: 8000});
+      await page.waitForFunction(() => !document.querySelector('.pending-message') && document.querySelector('.general-action.selected[aria-label="Terminar conversación"]'), null, {timeout: 8000});
       for (let attempt = 0; attempt < 50 && !posts.some(p=>p.path === '/api/agent/send' && /revisa los logs de poleana/i.test(p.text || '')); attempt++) await page.waitForTimeout(100);
       const spoken = posts.filter(p => p.path === '/api/agent/send').at(-1);
       assert(/revisa los logs de poleana/i.test(spoken.text) && spoken.provider === 'codex', 'El dictado no se envió');

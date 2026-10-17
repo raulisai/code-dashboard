@@ -122,6 +122,8 @@
 .general.keyboard-open { --orb: min(25vw, 15dvh, 96px); padding-bottom: 10px; gap: 6px; }
 .general.keyboard-open .general-actions { display: none; }
 .general.keyboard-open .general-details { top: 12px; bottom: auto; max-height: calc(var(--view-height, 100dvh) - 24px); }
+/* En tableta/escritorio el historial va centrado: con teclado virtual se ancla arriba para que no quede detrás. */
+@media (min-width: 1024px) { .general.keyboard-open .general-sheet { top: 20px; bottom: auto; } }
 .general-shell:has(.general.keyboard-open) .bottom-nav { display: none !important; }
 @media (prefers-reduced-motion: reduce) { .general *, .general *::before { animation: none !important; transition: none !important; } }
 @media (prefers-reduced-transparency: reduce) { .general-popover, .general-response { background: #101c2b; backdrop-filter: none; } }
