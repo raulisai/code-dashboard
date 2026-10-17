@@ -135,23 +135,59 @@ El esfuerzo se aplica con `--effort` en Claude y `model_reasoning_effort` en Cod
 
 ## Agente general (esfera central)
 
-La esfera del centro de la barra abre **Agente** (`/agent`): un agente que conoce
-todos los proyectos de `/srv/projects`, administra el servidor y deduce a qué
-proyecto te refieres. Conversas con un único agente, sin elegir modelo; usa el
-proveedor predeterminado de Ajustes. Arriba ves qué hace (titular,
-proyecto y «Actividad en tiempo real» con comando, resultado y duración). **Toca la
-esfera para hablar**: deja de escuchar tras una pausa (o al tocarla otra vez), el
-texto se envía solo a los 3 segundos (puedes **Editar** o **Cancelar**) y la
-respuesta se lee en voz alta (se desactiva en «…»). También puedes **Escribir**.
-En «…» están la conversación completa, el atajo al proyecto en uso y «Conversación
-nueva». Corre en la cola como el pseudo-proyecto `_general` con cwd `/srv/projects`
-y sin commit automático propio: hace commit en cada proyecto que modifique.
-La esfera pequeña y la grande comparten el mismo componente, con ondas, luz,
-partículas interiores y puntos en órbita. La transición de entrada y los cambios
-de tamaño son suaves. Las animaciones se pausan con la pestaña oculta y respetan
-«reducir movimiento». El historial completo permite responder sin mostrar modelos.
-Los borradores y mensajes con envío fallido se conservan; al salir se cancela la
-transcripción en curso. Los proyectos nuevos se crean con **Proyectos → Nuevo proyecto**.
+La esfera de la barra abre **Agente** (`/agent`): conoce los proyectos, administra
+el servidor y conserva una conversación. Ahora es una nube de puntos en 3D,
+compartida en pequeño y grande, con movimiento y reacción a la voz. Se detiene
+fuera de pantalla/con la pestaña oculta y respeta movimiento reducido.
+
+**Toca la esfera y habla.** El modo rápido usa reconocimiento del navegador, si
+está disponible, con texto provisional en vivo. Envía la frase al terminar, lee
+la respuesta y vuelve a escuchar. **Terminar conversación** apaga micrófono y voz;
+salir u ocultar la pestaña también cancela la escucha. Tocar mientras habla
+interrumpe la lectura. **Escribir** sigue disponible y conserva borradores.
+
+En «…» puedes elegir voz automática, **local rápida** o **local precisa**, apagar
+la lectura y abrir el historial. El reconocimiento del navegador puede procesar
+el audio con su servicio; las opciones locales lo procesan solo en este VPS, sin
+conservar grabaciones. Si falla la vía rápida del navegador se intenta el motor
+local. El respaldo local corta tras unos 700 ms de silencio; ya no espera tres
+segundos antes de enviar. Usa Whisper tiny int8 para frases rápidas de hasta 30 s,
+y el motor small para dictado preciso/largo. Se rechazan resultados vacíos, de
+baja confianza o muy repetitivos en lugar de enviarlos como órdenes.
+
+La latencia depende del navegador, CPU, red y respuesta del agente; no es un canal
+de audio bidireccional de un modelo Realtime. El motor local puede tardar varios
+segundos y requiere probar precisión con voces humanas en el teléfono.
+[Compatibilidad de voz del navegador](https://developer.mozilla.org/en-US/docs/Web/API/SpeechRecognition)
+y [modelo local rápido fijado en la imagen](https://huggingface.co/Systran/faster-whisper-tiny).
+
+**Conexión automática:** parte del agente predeterminado y evita conexiones con
+fallos recientes de cuota/autenticación/disponibilidad. Ante un error confirmado,
+prueba la otra conexión, conserva el mismo mensaje y le pasa el contexto y el
+trabajo parcial. Cada mensaje prueba cada proveedor como máximo una vez; si
+ambos fallan, lo dice y permite reintentar. No consulta ni inventa saldos. No se
+reintentan automáticamente fallos de implementación ni se cambia de proveedor en
+los chats de proyecto. Las observaciones caducan y un éxito limpia el bloqueo.
+
+**Presentaciones dentro de la conversación:** el agente puede responder con
+bloques `cm-ui` de JSON para gráficos interactivos de barras/línea, tablas,
+planos/interfaces HTML+CSS+SVG y archivos del proyecto. Se pueden ampliar; los
+archivos SVG/imágenes/Markdown/texto/HTML se previsualizan y el PDF se abre en el
+visor del navegador. El HTML se sanea y se renderiza en iframe con sandbox, sin
+scripts, red ni acceso a la sesión. Los gráficos usan componentes propios;
+no se ejecuta JavaScript arbitrario generado por el agente. Ejemplo:
+
+```cm-ui
+{"type":"chart","title":"Progreso","labels":["Antes","Ahora"],"values":[3,8]}
+```
+
+También admite `{"type":"table","columns":["Nombre","Valor"],"rows":[["A",3]]}`,
+`{"type":"html","title":"Plano","html":"<svg>...</svg>"}` y
+`{"type":"file","project":"mi-proyecto","path":"public/plano.svg"}`.
+
+El agente general sigue sin selector de modelos, usa `_general` desde
+`/srv/projects` y hace commits en los proyectos que modifica. Crear proyectos
+permanece en **Proyectos → Nuevo proyecto**.
 
 ## Pedir cambios hablando
 
@@ -347,7 +383,7 @@ desde proyectos tienen una política de contenido que bloquea scripts.
 
 `/home/dv1/.config/codex-automation/`, montado como `/config`, conserva:
 
-- `tasks.tsv`: cola compatible con las herramientas anteriores; 16 columnas con escapes: `chat_id` en la 14, `model` en la 15 y `effort` en la 16; filas antiguas usan `main` y modelo predeterminado.
+- `tasks.tsv`: cola compatible con las herramientas anteriores; 17 columnas con escapes: `chat_id` en la 14, `model` en la 15, `effort` en la 16 y `providers_tried` en la 17; filas antiguas usan `main` y modelo predeterminado.
 - `chats.json`: nombres e identificadores de los chats de cada proyecto.
 - `chats-archive.json`: chats eliminados y vaciados del principal (fecha, contextos
   anteriores y mensajes cancelados). Sus ejecuciones siguen en `runs/`.

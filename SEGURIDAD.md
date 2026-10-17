@@ -120,3 +120,23 @@ Fuentes primarias consultadas:
 [seguridad Docker](https://docs.docker.com/engine/security/),
 [aviso source-map-js](https://github.com/advisories/GHSA-68fv-2mgg-jv7q),
 [Trivy oficial](https://trivy.dev/docs/latest/getting-started/installation/).
+
+
+## Ampliación del agente general (18 de octubre)
+
+Las UIs generadas se limitan al protocolo `cm-ui`. HTML/SVG se sanea con DOMPurify,
+se eliminan etiquetas activas y destinos externos, y se renderiza con iframe
+`sandbox=""` y CSP sin scripts/red/formularios. Los gráficos interactivos son
+componentes React propios, nunca código arbitrario del agente. Se validan rutas
+de archivo y tamaños/cantidad de tarjetas. El CSP permite frames propios para
+esta vista; X-Frame-Options DENY y aislamiento de archivos se mantienen.
+
+Prueba con HTML hostil: sin ejecución de script, sin acceso al padre y sin
+conexiones al dominio espía. No se concede allow-same-origin ni allow-scripts.
+El PDF se abre en el visor del navegador en lugar de debilitar las cabeceras.
+
+La voz rápida puede usar el proveedor de reconocimiento del navegador; el menú
+ofrece opciones solo locales. Se cancelan captura y transcripción al salir,
+ocultar la pestaña o terminar conversación. Los resultados locales sospechosos
+no se envían como órdenes. La disponibilidad entre CLI se basa en fallos
+observados, no en saldos inventados; intentos limitados y continuidad de contexto.

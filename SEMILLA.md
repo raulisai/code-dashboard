@@ -2,9 +2,17 @@
 
 > Leer antes de trabajar. Actualizar las secciones 0, 4 y 5 al terminar.
 
-Última actualización: 2026-10-17, 23:38 Europe/Berlin. Autor: Codex (selector de modelos y esfuerzo).
+Última actualización: 2026-10-18, 00:05 Europe/Berlin. Autor: Codex (agente general: voz, partículas, continuidad y presentaciones).
 
 ## 0. Estado en una línea
+
+**Agente general ampliado:** esfera de puntos 3D compartida con navegación,
+voz rápida con texto provisional cuando el navegador lo admite, turnos automáticos
+hablar/responder/escuchar y respaldo local rápido/preciso. Ya no espera tres
+segundos para enviar. Enrutamiento automático entre Claude/Codex ante límites,
+autenticación o disponibilidad, con continuidad y máximo dos intentos por mensaje.
+Presentaciones `cm-ui`: gráficos interactivos, tablas, HTML/SVG aislado y archivos.
+**168 Python + 14 frontend OK**. Ver detalle, límites y evidencias más abajo.
 
 **Selector inferior de modelo y esfuerzo publicado:** reemplaza el input libre. En el
 compositor de los chats de proyecto, «Escoger modelo» abre panel con modelos y
@@ -200,6 +208,32 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Agente general: voz, continuidad y presentaciones
+
+- Falta comprobar voz humana y comportamiento real de micrófono/TTS en el teléfono
+  del usuario. Las pruebas de turnos usan reconocimiento/TTS simulado y micrófono
+  virtual; no prueban exactitud humana ni latencia del proveedor de agentes.
+- No es una API Realtime de audio bidireccional: la vía nativa da texto en vivo,
+  pero local transcribe por frase y los CLI responden con su latencia normal.
+  El reconocimiento del navegador puede usar su servicio externo; «local rápida»
+  y «local precisa» procesan solo en el VPS. No se guardan grabaciones.
+- Bajo carga, Whisper small tardó ~10–20 s para 4 s de voz sintética; tiny ~4–5 s
+  inicialmente, con menor precisión. Se añadió control de confianza/repetición y
+  opciones de motor. No afirmar instantaneidad ni calidad validada con el usuario.
+- La disponibilidad se aprende de errores reales; no es un saldo de créditos.
+  CONFIG/provider-availability.json: cuota/auth se recuerdan 15 min, temporales
+  60 s, éxito limpia estado. Si ambos constan bloqueados, un nuevo mensaje puede
+  volver a comprobarlos una vez cada uno. Nunca hay reintento indefinido.
+- General conserva el mensaje y contexto al cambiar de conexión; los proyectos
+  siguen con selección manual. Si hubo acciones parciales, se pide revisar estado
+  y evitar repetir lo completado. No se reproducen automáticamente comandos sueltos.
+- HTML de `cm-ui` es estático: scripts/red/formularios eliminados y sandbox sin
+  permisos. Gráficos propios sí son interactivos. PDF abre fuera del iframe;
+  se conservan X-Frame-Options DENY y CSP de los archivos originales.
+- Respaldo previo de esta ampliación:
+  `/srv/platform/backups/codex-dashboard-auto/20261017T214147.011777Z/` (comprobar
+  la copia real más reciente anterior al trabajo si la ruta histórica difiere).
 
 ### Selector inferior de modelo y esfuerzo (sustituye el input anterior)
 
@@ -474,6 +508,35 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Agente general: conversación y presentaciones
+
+- Orb.jsx/particles.js: 1250 puntos grandes y 220 por miniatura, esfera Fibonacci
+  con deformación/rotación y respuesta al audio; DPR limitado, pausa por visibilidad
+  e intersección, render estático con movimiento reducido. Sin recursos externos.
+- useOrbVoice: SpeechRecognition con resultados provisionales cuando existe,
+  fallback local si falla, cancelación y tiempos acotados. General elimina espera
+  de 3 s, habla y reanuda escucha, permite terminar o interrumpir y apaga al ocultar.
+  TTS se asocia al ID del mensaje, conservado durante cambio de proveedor.
+- Speech: tiny int8 fijado a d90ca5fe260221311c53c58e660288d3deb8d356 para fast <=30 s;
+  small sigue para preciso/largo. Protocolo/formatos y límites de audio conservados.
+  Rechazo de texto vacío, baja confianza y repetición antes de enviar órdenes.
+- availability.py y planificador: observaciones persistentes, salto a otro CLI
+  solo por fallo de conexión/cupo/auth y solo en _general. providers_tried en TSV
+  columna 17; mensajes históricos compatibles, máximo una ejecución por proveedor
+  y mensaje. Éxitos no se clasifican como cuota por avisos anteriores.
+- Claude --include-partial-messages y normalización de fragmentos sin duplicar
+  texto final; General actualiza cada 500 ms al trabajar y carga eventos completos
+  solo de la última ejecución para reducir tráfico. Nuevas capacidades se inyectan
+  también en sesiones Codex reanudadas, sin reiniciar contexto.
+- Presentations.jsx/presentations.js: protocolo cm-ui acotado (6 tarjetas/64 KB),
+  gráficos SVG, tablas, archivos y HTML/SVG saneado con DOMPurify, iframe sandbox
+  sin scripts y CSP sin red. Ampliación con diálogo nativo y Escape. Rutas de
+  archivos validadas y endpoints existentes mantienen control de acceso.
+- 168 Python y 14 frontend aprobados; build Vite correcto y npm audit de producción
+  sin alertas. Prueba local General a 360/390/1440; prueba de voz nativa/turnos,
+  fallback local, UI, HTML hostil sin scripts/red/acceso al padre y agotamiento doble
+  aprobada también contra HTTPS público. No se gastaron turnos de agentes.
 
 ### Panel de modelos y esfuerzo junto al mensaje
 

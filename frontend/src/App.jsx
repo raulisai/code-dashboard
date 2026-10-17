@@ -101,9 +101,10 @@ function Shell({path, children}) {
     navigate(to); window.scrollTo(0, 0);
   };
   return <div className={path === '/agent' ? 'shell general-shell' : 'shell'}>
+    <a className="skip-content" href="#main-content" onClick={() => document.getElementById('main-content')?.focus()}>Saltar al contenido</a>
     <aside className="side">
       <a href="/" className="brand" onClick={event => go(event, '/')}><span className="brand-orb" aria-hidden="true"/><span>Codex <b>Manager</b></span></a>
-      <nav>{items.map(item => <a key={item.to} href={item.to} onClick={event => go(event, item.to)} className={`side-link ${path === item.to ? 'on' : ''} ${item.accent ? 'accent' : ''}`}>
+      <nav aria-label="Navegación lateral">{items.map(item => <a key={item.to} href={item.to} aria-current={path === item.to ? 'page' : undefined} onClick={event => go(event, item.to)} className={`side-link ${path === item.to ? 'on' : ''} ${item.accent ? 'accent' : ''}`}>
         <span className="side-nav-icon">{item.accent ? <Orb className="nav-orb"/> : <item.icon size={18}/>}</span><span>{item.label}</span>{item.badge ? <em className={item.alert ? 'alert' : ''}>{item.badge}</em> : null}
       </a>)}</nav>
       <div className="side-label">RECIENTES</div>
@@ -111,7 +112,7 @@ function Shell({path, children}) {
         <span className={p.working.length ? 'dot live' : p.running_containers ? 'dot on' : 'dot'}/>{p.name}</a>)}</div>
       <div className="side-foot"><span className={state.docker_ok && state.tmux_ok ? 'dot on' : 'dot bad'}/>{state.docker_ok && state.tmux_ok ? 'Servidor en línea' : 'Revisa el servidor'}</div>
     </aside>
-    <div className="page">
+    <div className="page" id="main-content" role="main" tabIndex={-1}>
       {error && <div className="offline-bar"><WifiOff size={15}/>{error}</div>}
       {!state.tmux_ok && <div className="offline-bar warn"><ShieldAlert size={15}/>El servidor tmux del host no responde: los agentes no pueden arrancar. Ejecuta <code>sudo systemctl restart codex-tmux</code>.</div>}
       {children}
