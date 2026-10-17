@@ -2,9 +2,17 @@
 
 > Leer antes de trabajar. Actualizar las secciones 0, 4 y 5 al terminar.
 
-Última actualización: 2026-10-18, 00:05 Europe/Berlin. Autor: Codex (agente general: voz, partículas, continuidad y presentaciones).
+Última actualización anterior: 2026-10-18, 00:05 Europe/Berlin. Autor: Codex (agente general: voz, partículas, continuidad y presentaciones).
+
+Última actualización: 2026-10-18 Europe/Berlin. Codex: barra compacta Glass y accesibilidad.
 
 ## 0. Estado en una línea
+
+**IU móvil refinada y publicada:** barra inferior de 81 a 60 px (≈25 % menos),
+iconos de 18 px, esfera elevada, cristal transparente con desenfoque y selección
+visible. Objetivos táctiles ≥44 px, acceso de teclado al contenido, estado de
+navegación accesible y respeto de movimiento/transparencia reducidos.
+
 
 **Agente general ampliado:** esfera de puntos 3D compartida con navegación,
 voz rápida con texto provisional cuando el navegador lo admite, turnos automáticos
@@ -209,6 +217,14 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
 
 ## 4. Pendientes y límites de validación
 
+### Barra compacta Glass (18 octubre)
+
+- Falta valoración del usuario en su celular físico, especialmente Safari/iOS.
+- Navegador comprobado contra web publicada con API simulada: no se enviaron tareas
+  ni se modificaron datos reales. Capturas con datos vacíos de prueba.
+- Respaldo previo: `/srv/platform/backups/codex-dashboard-auto/20261017T220456.129498Z/`.
+
+
 ### Agente general: voz, continuidad y presentaciones
 
 - Falta comprobar voz humana y comportamiento real de micrófono/TTS en el teléfono
@@ -232,8 +248,7 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   permisos. Gráficos propios sí son interactivos. PDF abre fuera del iframe;
   se conservan X-Frame-Options DENY y CSP de los archivos originales.
 - Respaldo previo de esta ampliación:
-  `/srv/platform/backups/codex-dashboard-auto/20261017T214147.011777Z/` (comprobar
-  la copia real más reciente anterior al trabajo si la ruta histórica difiere).
+  `/srv/platform/backups/codex-dashboard-auto/20261017T214728.058667Z/`.
 
 ### Selector inferior de modelo y esfuerzo (sustituye el input anterior)
 
@@ -508,6 +523,20 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Barra compacta Glass y ergonomía (18 octubre)
+
+- `neon.css`: altura 60 px, iconos 18 px, esfera 64 px elevada 15 px por encima
+  de la barra, transparencia, blur/saturación, alternativa opaca sin soporte,
+  selección visible, respuesta táctil y zonas seguras. Texto de navegación 10 px
+  con más contraste. Zonas táctiles de 52 px de alto; ajustes/enlaces Inicio ≥44 px.
+- `App.jsx`: saltar al contenido por teclado y aria-current en navegación lateral.
+- Respeto de movimiento reducido y preferencia de transparencia reducida.
+- Vite OK; Chromium 320/360/390/768/1440 sin desbordamiento ni errores JS; altura,
+  objetivos táctiles, esfera elevada, navegación/aria-current, foco y movimiento
+  reducido comprobados (`GLASS_BROWSER_OK`). Evidencias `artifacts/glass-20261018/`.
+- Reconstruido con `docker compose up -d --build`; Inicio HTTPS 200 y health ok.
+
 
 ### Agente general: conversación y presentaciones
 
