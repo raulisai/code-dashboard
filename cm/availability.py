@@ -5,8 +5,9 @@ from .util import read_json, write_json
 
 
 def failure(info, error=''):
+    if (info.get('result') or {}).get('ok'): return ''
     if (info.get('limits') or {}).get('status') == 'rejected': return 'quota'
-    text = ((info.get('result') or {}).get('text', '') + ' ' + error).lower()
+    text = (str((info.get('result') or {}).get('text') or '') + ' ' + str(error or '')).lower()
     if re.search(r'insufficient_quota|credit balance (?:is )?too low|out of credits|usage limit|rate.limit.exceeded|(?:hit|reached|exceeded).{0,40}(?:limit|quota)|(?:quota|credit).{0,30}(?:exhausted|exceeded|depleted)', text): return 'quota'
     if re.search(r'not logged in|invalid.api.key|authentication (?:failed|required)|unauthorized|login required', text): return 'auth'
     if re.search(r'overloaded|service unavailable|temporarily unavailable|too many requests|\b429\b', text): return 'temporary'

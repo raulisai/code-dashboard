@@ -37,6 +37,7 @@ class AvailabilityTests(IsolatedConfig, unittest.TestCase):
         availability.observe('codex')
         self.assertEqual(availability.choose('codex'),'codex')
         self.assertIsNone(availability.choose('codex',['claude','codex']))
+        self.assertEqual(availability.failure({'result':{'ok':True},'limits':{'status':'rejected'}}),'')
         self.assertEqual(availability.failure({'result':{'text':'invalid_api_key'}}),'auth')
         self.assertEqual(availability.failure({'result':{'text':'temporarily unavailable'}}),'temporary')
 

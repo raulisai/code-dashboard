@@ -43,7 +43,7 @@ def transcribe(data, language, prompt, fast=False):
     quick = bool(fast and duration <= 30 and MODEL_FAST is not None)
     model = MODEL_FAST if quick else MODEL
     segments, info = model.transcribe(audio, language=language, task='transcribe', beam_size=1 if fast else 3, best_of=1, temperature=0,
-                                     no_repeat_ngram_size=3, repetition_penalty=1.1, max_new_tokens=96 if quick else 448,
+                                     no_repeat_ngram_size=3, repetition_penalty=1.1, max_new_tokens=256 if quick else 448,
                                      initial_prompt=prompt[:900], vad_filter=True,
                                      vad_parameters={'min_silence_duration_ms': 500},
                                      condition_on_previous_text=False, hallucination_silence_threshold=1.5)
