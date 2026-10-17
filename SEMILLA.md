@@ -8,6 +8,15 @@
 
 ## 0. Estado en una línea
 
+**Agente general: ejecución en vivo arriba y controles plegados (18 octubre, Claude).**
+Pedido a Codex, que falló por cupo; lo hizo Claude. Mientras trabaja, bajo la
+cabecera aparecen en texto translúcido (sin caja) los últimos 3 comandos tal cual
+(`git push origin preproduccion`, `npm test`…), con icono de tipo, ✓/✗/anillo y
+duración, más la última frase del agente; tocarlo abre Actividad. En reposo no se
+muestra nada. Hablar/Escribir/Actividad/Respuesta/Detener quedan dentro de un botón
+«+» de 46 px que se despliega encima (se cierra al elegir, tocar fuera o Escape) y
+lleva un punto si hay trabajo o conversación de voz. Publicado; pruebas en sección 5.
+
 **Cabecera del proyecto sin botón verde «Desplegar» (18 octubre, Claude).** Lo pidió
 el usuario; Codex falló por límite de uso y Claude lo reintentó. Desplegar sigue en
 la herramienta «Desplegar» (barra lateral en escritorio, «Más» en el celular) y en
@@ -250,6 +259,16 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Ejecución en vivo + controles plegados (18 octubre)
+
+- Falta que el usuario lo vea en su celular con una tarea real (comandos largos se
+  cortan con «…»; el comando completo está en Actividad).
+- Pantallas bajas (≤600 px de alto) muestran solo 2 comandos y sin la frase; con el
+  teclado abierto, solo el último comando y sin el botón «+».
+- Otra petición concurrente (run `20261017-232832-cc594f`) guardó a mitad de trabajo
+  estos cambios en su commit «Cambios pendientes antes de Codex» (`81ad0fd`); el resto
+  va en el commit de esta petición. No se reescribió historia.
 
 ### Cabecera del proyecto (18 octubre)
 
@@ -593,6 +612,26 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Ejecución en vivo arriba y controles plegados (Claude, 18 octubre)
+
+- `views/General.jsx`: `.general-live` (botón transparente con `liveRows = rows.slice(-3)`
+  de `activityRows`, `data-age` 0/1/2 para atenuar los antiguos, `typingLine` en
+  cursiva) y `.general-dock` con `.dock-toggle` («Controles», `aria-expanded`,
+  `data-state` working/conversation + `.dock-badge`) que despliega `.general-actions`
+  (`role="group"`). `pick()` pliega y deja el foco en «+» para que los diálogos lo
+  devuelvan ahí. Clase `has-live` reduce la esfera para que todo quepa.
+- `general.css`: estilos `.live-*`, `.dock-*`, panel flotante animado; reglas para
+  `max-height: 600px`, `keyboard-open` y transparencia reducida.
+- Pruebas: `verify_general_browser.cjs` (helper `control()`, comandos exactos visibles
+  y transparentes arriba, duración, iconos, Escape/toque fuera, foco, Detener desde
+  ambos sitios) y `verify_general_keyboard.cjs` (usa `.general-dock`).
+  **168 Python + 15 frontend OK**, `GENERAL_KEYBOARD_OK` 390/360/1440 y
+  `GENERAL_BROWSER_OK` 320/360/390/768/1440/740×390 (una vez falló a 1440 esperando
+  «Nuevo proyecto» en /projects, intermitente; al repetir pasó todo). Capturas
+  `controls-*` y `working-*` en `artifacts/general-responsive-20261018/`.
+- Publicado con `docker compose up -d --build --wait`: ambos servicios healthy,
+  `/health` y `/agent` 200, el chunk `General-*.js` publicado contiene la nueva vista.
 
 ### Quitar «Desplegar» de la cabecera del proyecto
 

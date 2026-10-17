@@ -55,7 +55,7 @@
   color: #d6e4f7; cursor: pointer; touch-action: manipulation; }
 .live-line { display: grid; grid-template-columns: 16px 16px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 20px; opacity: .92; animation: live-in .35s ease-out; transition: opacity .4s; }
 .live-line[data-age='1'] { opacity: .5; }
-.live-line[data-age='2'] { opacity: .28; }
+.live-line[data-age='2'] { opacity: .34; }
 @keyframes live-in { from { opacity: 0; transform: translateY(-6px); } }
 .live-line code { padding: 0; background: none; font: .76rem/1.5 var(--mono); color: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .live-state { width: 16px; height: 16px; display: grid; place-items: center; color: #7fdcae; }
