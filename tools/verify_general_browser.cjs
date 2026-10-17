@@ -14,13 +14,27 @@ function toneWav(path, seconds = 4, rate = 16000) {
   fs.writeFileSync(path, data);
 }
 const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, running_containers: running, containers: [], container_details: [], working: [], queued: [], summary: '', stack: 'web'});
+async function checkLayout(page, name, width, height) {
+  const metrics = await page.evaluate(() => {
+    const rect = selector => { const el = document.querySelector(selector); if (!el || !el.getClientRects().length) return null;
+      const {top, bottom, left, right, width, height} = el.getBoundingClientRect(); return {top, bottom, left, right, width, height}; };
+    return {orb: rect('.live-orb'), header: rect('.general-top'), actions: rect('.general-actions'), response: rect('.general-response'),
+      nav: rect('.bottom-nav'), width: innerWidth, height: innerHeight, scroll: document.documentElement.scrollWidth};
+  });
+  const fits = metrics.scroll <= metrics.width + 1 && metrics.orb.top >= metrics.header.bottom - 1
+    && metrics.orb.bottom <= (metrics.response?.top ?? metrics.actions.top) + 1
+    && metrics.actions.bottom <= (metrics.nav?.top ?? metrics.height) + 1;
+  if (!fits) await page.screenshot({path: `${out}/layout-error-${name}-${width}x${height}.png`});
+  assert(fits, `Elementos solapados o fuera de pantalla (${name}): ${JSON.stringify(metrics)}`);
+}
 
 (async () => {
   fs.mkdirSync(out, {recursive: true});
   const wav = require('node:path').resolve(out, 'tono.wav'); toneWav(wav);
   const browser = await chromium.launch({headless: true, args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', `--use-file-for-fake-audio-capture=${wav}`]});
   try {
-    for (const [width, height] of [[320, 640], [360, 740], [390, 844], [768, 1024], [1440, 900], [740, 390]]) {
+    const sizes = JSON.parse(process.env.CM_TEST_SIZES || '[[320,640],[360,740],[390,844],[768,1024],[1440,900],[740,390]]');
+    for (const [width, height] of sizes) {
       console.log(`Checking general agent at ${width}px`);
       const mobile = width < 1024;
       const context = await browser.newContext({viewport: {width, height}, serviceWorkers: 'block', permissions: ['microphone'], locale: 'es-MX', hasTouch: mobile, isMobile: mobile});
@@ -75,10 +89,14 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
       assert(box.width >= Math.min(width * .28, height * .22), `Esfera pequeña: ${box.width}`);
       await page.screenshot({path: `${out}/idle-${width}x${height}.png`});
       assert(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1), 'La vista en reposo no cabe en pantalla');
+      await checkLayout(page, 'idle', width, height);
 
       // Las respuestas guardadas solo aparecen al pedirlas y se pueden volver a ocultar.
       await page.getByRole('button', {name: 'Ver respuesta', exact: true}).click();
       await page.locator('.general-response', {hasText: 'Respuesta guardada de la visita anterior.'}).waitFor();
+      await page.waitForTimeout(650);
+      await checkLayout(page, 'response', width, height);
+      await page.screenshot({path: `${out}/response-${width}x${height}.png`});
       await page.getByRole('button', {name: 'Ocultar respuesta', exact: true}).click();
       assert(await page.locator('.general-response').count() === 0, 'No ocultó la respuesta');
 
@@ -122,6 +140,7 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
       await page.waitForTimeout(800); // Esperar el cambio de tamaño suave antes de medir layout.
       assert(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1), 'La vista con actividad no cabe en pantalla');
       assert(await orb.getAttribute('data-state') === 'working', 'La esfera no indica trabajo');
+      await checkLayout(page, 'working', width, height);
       const dimensions = await page.evaluate(() => ({width: innerWidth, scroll: document.documentElement.scrollWidth}));
       assert(dimensions.scroll <= dimensions.width + 1, `Desbordamiento ${width}`);
       const orbBox = await orb.boundingBox(), navBox = mobile ? await page.locator('.bottom-nav').boundingBox() : null;
@@ -140,25 +159,32 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
       assert(await details.locator('.activity-row.running .ring').count() === 1, 'Sin indicador de la tarea en curso');
       for (let i = 0; i < 6; i++) {
         await page.keyboard.press('Tab');
-        assert(await details.evaluate(el => el.contains(document.activeElement)), 'El foco escapó del panel de actividad');
+        const focus = await details.evaluate(el => ({inside: el.contains(document.activeElement), tag: document.activeElement?.tagName,
+          label: document.activeElement?.getAttribute('aria-label')}));
+        if (!focus.inside) await page.screenshot({path: `${out}/focus-error-${width}x${height}.png`});
+        assert(focus.inside, `El foco escapó del panel de actividad: ${JSON.stringify(focus)}`);
       }
+      await details.getByRole('button', {name: 'Cerrar actividad'}).focus();
+      await activityButton.evaluate(el => el.focus());
+      assert(await details.evaluate(el => el.contains(document.activeElement)), 'El fondo del modal acepta foco');
       await page.keyboard.press('Escape');
       await details.waitFor({state: 'hidden'});
       assert(await activityButton.evaluate(el => el === document.activeElement), 'Cerrar actividad no devuelve el foco');
 
       // Al cambiar de herramienta se actualiza el icono y el texto desde eventos reales.
-      const previousIcon = await status.locator('svg').first().innerHTML();
+      const previousIcon = await page.locator('.orb-state-icon svg').innerHTML();
       agent = {...agent, rev: 'deploying', runs: [{...agent.runs[0], events: [
         ...agent.runs[0].events.map(event => event.t === 'tool' && event.status === 'running' ? {...event, status: 'done', t1: now()} : event),
         {t: 'tool', name: 'Bash', input: {command: 'docker compose up -d --build'}, status: 'running', t0: now()}]}]};
       await label.filter({hasText: 'Desplegando'}).waitFor({timeout: 8000});
       assert(await status.getAttribute('data-kind') === 'docker', 'El icono no cambió a Docker');
-      assert(await status.locator('svg').first().innerHTML() !== previousIcon, 'El dibujo del icono no cambió');
+      assert(await page.locator('.orb-state-icon svg').innerHTML() !== previousIcon, 'El dibujo del icono no cambió');
 
-      // Menú: conversación completa en una hoja y atajo al proyecto.
+      // Menú compacto y conversación completa en una hoja voluntaria.
       await page.getByRole('button', {name: 'Más opciones'}).click();
-      await page.getByRole('menuitem', {name: 'Abrir poleana-game'}).waitFor();
-      await page.getByRole('menuitem', {name: 'Ver conversación'}).click();
+      await page.getByRole('button', {name: 'Ver proyectos', exact: true}).waitFor();
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', {name: 'Ver conversación', exact: true}).click();
       await page.getByRole('dialog', {name: 'Conversación con el agente general'}).waitFor();
       assert(await page.getByRole('dialog').getByRole('radio').count() === 0, 'El historial muestra modelos');
       assert(await page.getByRole('dialog', {name: 'Conversación con el agente general'}).evaluate(el => el.tagName === 'DIALOG'), 'Historial no usa diálogo nativo');

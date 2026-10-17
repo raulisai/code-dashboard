@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {GENERAL, activityRows, classify, detectProject, duration, headline, projectLabel, speakable, taskHref} from '../src/general.js';
+import {GENERAL, activityRows, classify, detectProject, duration, headline, presence, projectLabel, speakable, taskHref} from '../src/general.js';
 
 const bash = (command, extra = {}) => ({t: 'tool', name: 'Bash', input: {command}, status: 'done', ...extra});
 
@@ -58,4 +58,25 @@ test('las tareas del agente general enlazan a su vista', () => {
   assert.equal(taskHref({project: GENERAL, chat_id: 'main'}), '/agent?chat=main');
   assert.equal(taskHref({project: 'poleana-game', chat_id: 'c-1'}), '/p/poleana-game?chat=c-1');
   assert.equal(projectLabel(GENERAL), 'Agente general');
+});
+
+
+test('la presencia distingue actividad real, voz, cola y reposo sin datos permanentes', () => {
+  assert.deepEqual(presence(), {kind: 'idle', title: 'Disponible'});
+  assert.deepEqual(presence({run: {status: 'done', result: {text: 'Respuesta anterior'}}}), {kind: 'idle', title: 'Disponible'});
+  assert.equal(presence({phase: 'listening', run: {status: 'running'}}).kind, 'listening');
+  assert.equal(presence({phase: 'transcribing'}).title, 'Transcribiendo');
+  assert.equal(presence({speaking: true}).kind, 'speaking');
+  assert.equal(presence({queued: 2}).kind, 'queue');
+  assert.equal(presence({sending: true}).title, 'Enviando');
+  assert.equal(presence({connected: false}).title, 'Conectando');
+  assert.equal(presence({run: {status: 'stopping'}}).kind, 'stopping');
+  assert.equal(presence({run: {status: 'running', approvals: [{id: 1}]}}).kind, 'approval');
+  const run = {status: 'running', events: [bash('npm test', {status: 'running'}), bash('git status')]};
+  assert.deepEqual(presence({run}), {kind: 'test', title: 'Ejecutando pruebas'});
+  run.events[0].status = 'done';
+  run.events.push(bash('docker compose up -d --build', {status: 'running'}));
+  assert.deepEqual(presence({run}), {kind: 'docker', title: 'Desplegando'});
+  assert.equal(presence({run: {status: 'error', providers_tried: 'codex,claude'}}).title, 'Ahora no hay conexión disponible');
+  assert.equal(presence({error: 'Sin red', phase: 'listening'}).kind, 'error');
 });

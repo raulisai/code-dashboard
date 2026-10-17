@@ -115,7 +115,7 @@ export default function General() {
     setArrival('launch');
   }, []);
 
-  // Mensaje dictado: se envía solo tras unos segundos salvo que lo edites o lo canceles.
+  // El dictado se envía al terminar la frase; se recupera como borrador si falla.
   useEffect(() => {
     if (!pending) return;
     const timer = setTimeout(async () => { const ok = await send(pending.text, true); setPending(null); if (!ok) { setText(pending.text); setTyping(true); } }, Math.max(0, pending.until - Date.now()));
@@ -140,6 +140,7 @@ export default function General() {
   const send = async (message, viaVoice = false) => {
     const value = String(message || '').trim();
     if (!value || inFlight.current) return false;
+    voice.clearError();
     inFlight.current = true; setSending(true);
     try {
       const result = await post('/api/agent/send', {project: GENERAL, chat_id: 'main', provider: nextProvider, text: value});
@@ -169,7 +170,7 @@ export default function General() {
 
   const orbState = voice.phase === 'listening' ? 'listening' : voice.phase !== 'idle' || sending || pending ? 'thinking' : speaking ? 'speaking' : running ? 'working' : busy || waiting.current ? 'thinking' : 'idle';
   const coarse = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
-  const openTyping = () => { endConversation(); setTyping(true); };
+  const openTyping = () => { endConversation(); voice.clearError(); setTyping(true); };
   const openSheet = () => { setMenu(false); endConversation(); setSheet(true); };
   return <div className={`general ${arrival ? `arrive-${arrival}` : ''} ${showResponse ? 'has-response' : ''} ${typing ? 'is-typing' : ''} ${viewport.keyboard ? 'keyboard-open' : ''}`}
     style={{'--view-height': `${viewport.height}px`}}>
@@ -284,6 +285,13 @@ function AgentDialog({className, label, onClose, children}) {
     element.showModal(); document.body.style.overflow = 'hidden';
     return () => { if (element.open) element.close(); document.body.style.overflow = overflow; };
   }, []);
-  return <dialog ref={dialog} className={className} aria-label={label} onCancel={event => { event.preventDefault(); onClose(); }}
+  const trapFocus = event => {
+    if (event.key !== 'Tab' || event.target.closest('dialog') !== dialog.current) return;
+    const targets = [...dialog.current.querySelectorAll('button:not(:disabled), a[href], textarea, input:not(:disabled), select:not(:disabled), [tabindex="0"]')].filter(element => element.getClientRects().length);
+    const first = targets[0], last = targets.at(-1);
+    if (first && event.shiftKey && (document.activeElement === first || document.activeElement === dialog.current)) { event.preventDefault(); last.focus(); }
+    else if (last && !event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  };
+  return <dialog ref={dialog} className={className} aria-label={label} onKeyDown={trapFocus} onCancel={event => { event.preventDefault(); onClose(); }}
     onClick={event => { if (event.target === event.currentTarget) onClose(); }}>{children}</dialog>;
 }

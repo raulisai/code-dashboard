@@ -153,8 +153,18 @@ la respuesta y vuelve a escuchar. **Terminar conversación** apaga micrófono y 
 salir u ocultar la pestaña también cancela la escucha. Tocar mientras habla
 interrumpe la lectura. **Escribir** sigue disponible y conserva borradores.
 
+La pantalla mantiene solo la esfera, un icono que cambia con la actividad real y
+un estado breve (escuchando, pensando, editando, probando o desplegando). No muestra
+saludos, datos de proyectos ni comandos de forma permanente. **Actividad** abre
+el detalle, el proyecto detectado y el resumen del servidor; **Detener** está
+disponible mientras trabaja. El botón de conversación de la cabecera abre el
+historial. Las respuestas anteriores aparecen al tocar **Respuesta**; una
+respuesta a tu petición actual se presenta en una tarjeta que puedes cerrar.
+Conserva Markdown, tablas, gráficos y archivos. La vista se adapta a la altura
+disponible al abrir el teclado y a la orientación del teléfono.
+
 En «…» puedes elegir voz automática, **local rápida** o **local precisa**, apagar
-la lectura y abrir el historial. El reconocimiento del navegador puede procesar
+la lectura y acceder a Proyectos. El reconocimiento del navegador puede procesar
 el audio con su servicio; las opciones locales lo procesan solo en este VPS, sin
 conservar grabaciones. Si falla la vía rápida del navegador se intenta el motor
 local. El respaldo local corta tras unos 700 ms de silencio; ya no espera tres
