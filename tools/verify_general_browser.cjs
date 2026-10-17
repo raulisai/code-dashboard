@@ -13,15 +13,23 @@ function toneWav(path, seconds = 4, rate = 16000) {
   for (let i = 0; i < samples; i++) data.writeInt16LE(Math.round(Math.sin(2 * Math.PI * 440 * i / rate) * 9000), 44 + i * 2);
   fs.writeFileSync(path, data);
 }
+// Las opciones viven plegadas en un botón pequeño: se despliega antes de usarlas.
+async function control(page, name) {
+  const toggle = page.getByRole('button', {name: 'Controles', exact: true});
+  if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+  await page.getByRole('group', {name: 'Controles del agente general'}).getByRole('button', {name, exact: true}).click();
+  assert(await toggle.getAttribute('aria-expanded') === 'false', `«${name}» no plegó los controles`);
+}
 const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, running_containers: running, containers: [], container_details: [], working: [], queued: [], summary: '', stack: 'web'});
 async function checkLayout(page, name, width, height) {
   const metrics = await page.evaluate(() => {
     const rect = selector => { const el = document.querySelector(selector); if (!el || !el.getClientRects().length) return null;
       const {top, bottom, left, right, width, height} = el.getBoundingClientRect(); return {top, bottom, left, right, width, height}; };
-    return {orb: rect('.live-orb'), header: rect('.general-top'), actions: rect('.general-actions'), response: rect('.general-response'),
+    return {orb: rect('.live-orb'), header: rect('.general-top'), actions: rect('.general-dock'), live: rect('.general-live'), response: rect('.general-response'),
       nav: rect('.bottom-nav'), width: innerWidth, height: innerHeight, scroll: document.documentElement.scrollWidth};
   });
-  const fits = metrics.scroll <= metrics.width + 1 && metrics.orb.top >= metrics.header.bottom - 1
+  const fits = metrics.scroll <= metrics.width + 1 && metrics.orb.top >= (metrics.live?.bottom ?? metrics.header.bottom) - 1
+    && (!metrics.live || metrics.live.top >= metrics.header.bottom - 1 && metrics.live.right <= metrics.width + 1)
     && metrics.orb.bottom <= (metrics.response?.top ?? metrics.actions.top) + 1
     && metrics.actions.bottom <= (metrics.nav?.top ?? metrics.height) + 1;
   if (!fits) await page.screenshot({path: `${out}/layout-error-${name}-${width}x${height}.png`});
@@ -90,9 +98,23 @@ async function checkLayout(page, name, width, height) {
       await page.screenshot({path: `${out}/idle-${width}x${height}.png`});
       assert(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1), 'La vista en reposo no cabe en pantalla');
       await checkLayout(page, 'idle', width, height);
+      assert(await page.locator('.general-live').count() === 0, 'La barra de ejecución aparece en reposo');
+      assert(await page.locator('.general-action').count() === 0, 'Los controles no empiezan plegados');
+      const dock = await page.locator('.dock-toggle').boundingBox();
+      assert(dock.width <= 48 && dock.height <= 48, `El botón de controles no es pequeño: ${JSON.stringify(dock)}`);
+      await page.getByRole('button', {name: 'Controles', exact: true}).click();
+      const panel = await page.locator('.general-actions').boundingBox();
+      assert(panel.x >= -1 && panel.x + panel.width <= width + 1 && panel.y >= 0 && panel.y + panel.height <= dock.y + 1, `Controles desplegados fuera de sitio: ${JSON.stringify(panel)}`);
+      await page.screenshot({path: `${out}/controls-${width}x${height}.png`});
+      await page.keyboard.press('Escape');
+      await page.locator('.general-actions').waitFor({state: 'detached'});
+      assert(await page.locator('.dock-toggle').evaluate(el => el === document.activeElement), 'Escape no devolvió el foco al botón de controles');
+      await page.getByRole('button', {name: 'Controles', exact: true}).click();
+      await page.locator('.general-identity').click();
+      await page.locator('.general-actions').waitFor({state: 'detached'});
 
       // Las respuestas guardadas solo aparecen al pedirlas y se pueden volver a ocultar.
-      await page.getByRole('button', {name: 'Ver respuesta', exact: true}).click();
+      await control(page, 'Ver respuesta');
       await page.locator('.general-response', {hasText: 'Respuesta guardada de la visita anterior.'}).waitFor();
       await page.waitForTimeout(650);
       await checkLayout(page, 'response', width, height);
@@ -103,7 +125,7 @@ async function checkLayout(page, name, width, height) {
       // Proveedor y mensaje escrito.
       assert(await page.getByRole('radio').count() === 0, 'La conversación expone el selector de proveedor');
       assert(await page.locator('.orb-particles').count() >= 3, 'No se comparte la nube de partículas');
-      await page.getByRole('button', {name: 'Escribir'}).click();
+      await control(page, 'Escribir');
       await page.locator('.general-compose textarea').fill('¿Cómo está el servidor?');
       await page.getByRole('button', {name: 'Enviar', exact: true}).click();
       await page.waitForFunction(() => !document.querySelector('.general-compose'));
@@ -116,7 +138,7 @@ async function checkLayout(page, name, width, height) {
 
       // Un fallo conserva el borrador y permite reintentar.
       rejectSend = true;
-      await page.getByRole('button', {name: 'Escribir', exact: true}).click();
+      await control(page, 'Escribir');
       await page.locator('.general-compose textarea').fill('Conserva este mensaje');
       await page.getByRole('button', {name: 'Enviar', exact: true}).click();
       await page.waitForTimeout(300);
@@ -125,7 +147,7 @@ async function checkLayout(page, name, width, height) {
       await page.getByRole('button', {name: 'Enviar', exact: true}).click();
       await page.waitForFunction(() => !document.querySelector('.general-compose'));
 
-      // Trabajando: solo estado e icono; comandos y proyecto se consultan en el panel.
+      // Trabajando: arriba, en texto translúcido con iconos, lo que se ejecuta tal cual; el detalle completo sigue en el panel.
       const t = now();
       agent = {...agent, rev: '2', working: [{id: 't-1'}], runs: [{id: 'r1', task_id: 't-1', provider: 'claude', status: 'running', approvals: [], events: [
         {t: 'text', text: 'Reviso poleana-game.'},
@@ -135,8 +157,20 @@ async function checkLayout(page, name, width, height) {
         {t: 'text', text: 'Generando reporte...'}]}]};
       await label.filter({hasText: 'Ejecutando pruebas'}).waitFor({timeout: 8000});
       assert(await status.getAttribute('data-kind') === 'test', 'El estado no identifica las pruebas');
-      assert(!/git push|docker compose|Generando reporte|poleana-game/.test(await page.locator('.general').innerText()), 'Los detalles de actividad aparecen sin pedirlos');
-      assert(await page.locator('.activity-row:visible').count() === 0, 'La actividad aparece desplegada');
+      const live = page.locator('.general-live');
+      await live.locator('.live-line.running code', {hasText: 'npm test'}).waitFor();
+      const lines = await live.locator('.live-line:visible code').allInnerTexts();
+      if (height > 600) {
+        assert(lines.join('|') === 'git push origin preproduccion|docker compose up -d|npm test', `Comandos en vivo incorrectos: ${lines}`);
+        assert(await live.locator('.live-thought', {hasText: 'Generando reporte...'}).isVisible(), 'No se ve lo último que dijo el agente');
+      } else assert(lines.join('|') === 'docker compose up -d|npm test', `Comandos en vivo (pantalla baja): ${lines}`);
+      assert(await live.locator('.live-line.done[data-kind="docker"] svg').count() >= 2 && await live.locator('.live-line.running .ring').count() === 1, 'Faltan iconos de estado o tipo');
+      assert(/^(1[2-9]|2\d)s$/.test(await live.locator('.live-line[data-kind="docker"] .live-time').innerText()), 'Sin duración en la línea en vivo');
+      assert(await live.evaluate(el => { const style = getComputedStyle(el); return style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.borderTopWidth === '0px'; }), 'La barra de ejecución no es transparente');
+      const live0 = await live.boundingBox(), header0 = await page.locator('.general-top').boundingBox(), orb0 = await orb.boundingBox();
+      assert(live0.y >= header0.y + header0.height - 1 && live0.y + live0.height <= orb0.y + 1, 'La barra de ejecución no está arriba de la esfera');
+      assert(!/poleana-game/.test(await page.locator('.general').innerText()) && await page.locator('.activity-row:visible').count() === 0, 'El panel de actividad aparece sin pedirlo');
+      assert(await page.locator('.dock-toggle[data-state="working"] .dock-badge').count() === 1, 'El botón de controles no indica que hay trabajo');
       await page.waitForTimeout(800); // Esperar el cambio de tamaño suave antes de medir layout.
       assert(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1), 'La vista con actividad no cabe en pantalla');
       assert(await orb.getAttribute('data-state') === 'working', 'La esfera no indica trabajo');
@@ -147,7 +181,7 @@ async function checkLayout(page, name, width, height) {
       if (navBox) assert(orbBox.y + orbBox.height <= navBox.y + 2, 'La esfera queda bajo la barra');
       await page.screenshot({path: `${out}/working-${width}x${height}.png`});
 
-      const activityButton = page.getByRole('button', {name: 'Ver actividad', exact: true});
+      const activityButton = page.locator('.general-live');
       await activityButton.click();
       const details = page.getByRole('dialog', {name: 'Actividad del agente general', exact: true});
       await details.waitFor();
@@ -177,6 +211,7 @@ async function checkLayout(page, name, width, height) {
         ...agent.runs[0].events.map(event => event.t === 'tool' && event.status === 'running' ? {...event, status: 'done', t1: now()} : event),
         {t: 'tool', name: 'Bash', input: {command: 'docker compose up -d --build'}, status: 'running', t0: now()}]}]};
       await label.filter({hasText: 'Desplegando'}).waitFor({timeout: 8000});
+      await live.locator('.live-line.running[data-age="0"] code', {hasText: 'docker compose up -d --build'}).waitFor();
       assert(await status.getAttribute('data-kind') === 'docker', 'El icono no cambió a Docker');
       assert(await page.locator('.orb-state-icon svg').innerHTML() !== previousIcon, 'El dibujo del icono no cambió');
 
@@ -190,29 +225,36 @@ async function checkLayout(page, name, width, height) {
       assert(await page.getByRole('dialog', {name: 'Conversación con el agente general'}).evaluate(el => el.tagName === 'DIALOG'), 'Historial no usa diálogo nativo');
       await page.keyboard.press('Escape');
       await page.getByRole('dialog', {name: 'Conversación con el agente general'}).waitFor({state: 'hidden'});
-      await activityButton.click();
+      await control(page, 'Ver actividad');
+      await details.waitFor();
       await details.getByRole('button', {name: /^Detener/}).click();
       assert(posts.some(p => p.path === '/api/runs/r1/stop'), 'Detener no llamó a la API');
       await page.keyboard.press('Escape');
+      await details.waitFor({state: 'hidden'});
+      assert(await page.locator('.dock-toggle').evaluate(el => el === document.activeElement), 'Actividad no devolvió el foco al botón de controles');
+      await control(page, 'Detener tarea');
+      assert(posts.filter(p => p.path === '/api/runs/r1/stop').length === 2, 'Detener desde los controles no llamó a la API');
 
       // Hablar: tocar la esfera escucha, tocar otra vez transcribe y el texto se envía solo.
       agent = {...agent, rev: '3', working: [], runs: [{...agent.runs[0], status: 'done', result: {text: 'Listo: **poleana-game** está en línea.'}}]};
       await label.filter({hasText: 'Disponible'}).waitFor({timeout: 8000});
+      assert(await page.locator('.general-live').count() === 0, 'La barra de ejecución sigue al terminar');
       await orb.click();
       await page.waitForFunction(() => document.querySelector('.live-orb').dataset.state === 'listening', null, {timeout: 8000});
       await page.waitForTimeout(1500);
       await orb.click();
-      await page.waitForFunction(() => !document.querySelector('.pending-message') && document.querySelector('.general-action.selected[aria-label="Terminar conversación"]'), null, {timeout: 8000});
+      await page.waitForFunction(() => !document.querySelector('.pending-message') && document.querySelector('.dock-toggle[data-state="conversation"] .dock-badge'), null, {timeout: 8000});
       for (let attempt = 0; attempt < 50 && !posts.some(p=>p.path === '/api/agent/send' && /revisa los logs de poleana/i.test(p.text || '')); attempt++) await page.waitForTimeout(100);
       const spoken = posts.filter(p => p.path === '/api/agent/send').at(-1);
       assert(/revisa los logs de poleana/i.test(spoken.text) && spoken.provider === 'codex', 'El dictado no se envió');
 
-      await page.getByRole('button', {name:'Terminar conversación',exact:true}).click();
+      await control(page, 'Terminar conversación');
+      await page.waitForFunction(() => !document.querySelector('.dock-toggle[data-state="conversation"]'));
 
       // Un viewport bajo (teclado móvil) conserva el compositor y la acción de enviar.
       if (width === 390) {
         await page.setViewportSize({width: 390, height: 480});
-        await page.getByRole('button', {name: 'Escribir', exact: true}).click();
+        await control(page, 'Escribir');
         await page.locator('.general-compose textarea').fill('Borrador con el teclado abierto');
         await page.waitForTimeout(500);
         const sendBox = await page.getByRole('button', {name: 'Enviar', exact: true}).boundingBox();
@@ -233,6 +275,6 @@ async function checkLayout(page, name, width, height) {
       await context.close();
       console.log(`General agent OK at ${width}px`);
     }
-    console.log('GENERAL_BROWSER_OK (320, 360, 390, 768, 1440, paisaje 740x390): información bajo demanda, iconos, actividad, voz y teclado');
+    console.log('GENERAL_BROWSER_OK (320, 360, 390, 768, 1440, paisaje 740x390): ejecución en vivo arriba, controles plegados, actividad, voz y teclado');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exit(1); });

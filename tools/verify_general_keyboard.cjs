@@ -38,6 +38,7 @@ const assert = (ok, message) => { if (!ok) throw new Error(message); };
         assert(box.x >= -1 && box.x + box.width <= width + 1, `${label} desborda horizontalmente`);
       };
 
+      await page.getByRole('button', {name: 'Controles', exact: true}).click();
       await page.getByRole('button', {name: 'Escribir', exact: true}).click();
       await page.locator('.general-compose textarea').fill('Mensaje largo para comprobar el teclado.\n'.repeat(15));
       await visualHeight(keyboardHeight);
@@ -46,12 +47,12 @@ const assert = (ok, message) => { if (!ok) throw new Error(message); };
       await contained('.live-orb', keyboardHeight, 'Esfera');
       await contained('.general-compose', keyboardHeight, 'Compositor');
       await contained('.general-compose .send-btn', keyboardHeight, 'Enviar');
-      assert(await page.locator('.general-actions').evaluate(el => getComputedStyle(el).display === 'none'), 'Los controles no se adaptaron al teclado');
+      assert(await page.locator('.general-dock').evaluate(el => getComputedStyle(el).display === 'none'), 'Los controles no se adaptaron al teclado');
       if (width < 1024) assert(await page.locator('.bottom-nav').evaluate(el => getComputedStyle(el).display === 'none'), 'La navegación tapa el teclado');
       await visualHeight(height);
       assert(!await page.locator('.general').evaluate(el => el.classList.contains('keyboard-open')), 'El teclado quedó marcado al cerrarse');
       await page.getByRole('button', {name: 'Cerrar teclado', exact: true}).click();
-      await contained('.general-actions', height, 'Controles tras cerrar teclado');
+      await contained('.general-dock', height, 'Controles tras cerrar teclado');
 
       await page.getByRole('button', {name: 'Ver conversación', exact: true}).focus();
       await page.getByRole('button', {name: 'Ver conversación', exact: true}).click();
