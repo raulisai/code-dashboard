@@ -115,7 +115,8 @@ ya visitados pueden abrirse sin conexión; ejecutar acciones requiere conexión.
 
 La esfera del centro de la barra abre **Agente** (`/agent`): un agente que conoce
 todos los proyectos de `/srv/projects`, administra el servidor y deduce a qué
-proyecto te refieres. Arriba eliges **Codex | Claude** y ves qué hace (titular,
+proyecto te refieres. Conversas con un único agente, sin elegir modelo; usa el
+proveedor predeterminado de Ajustes. Arriba ves qué hace (titular,
 proyecto y «Actividad en tiempo real» con comando, resultado y duración). **Toca la
 esfera para hablar**: deja de escuchar tras una pausa (o al tocarla otra vez), el
 texto se envía solo a los 3 segundos (puedes **Editar** o **Cancelar**) y la
@@ -123,7 +124,12 @@ respuesta se lee en voz alta (se desactiva en «…»). También puedes **Escrib
 En «…» están la conversación completa, el atajo al proyecto en uso y «Conversación
 nueva». Corre en la cola como el pseudo-proyecto `_general` con cwd `/srv/projects`
 y sin commit automático propio: hace commit en cada proyecto que modifique.
-Los proyectos nuevos se crean con **Proyectos → Nuevo proyecto**.
+La esfera pequeña y la grande comparten el mismo componente, con ondas, luz,
+partículas interiores y puntos en órbita. La transición de entrada y los cambios
+de tamaño son suaves. Las animaciones se pausan con la pestaña oculta y respetan
+«reducir movimiento». El historial completo permite responder sin mostrar modelos.
+Los borradores y mensajes con envío fallido se conservan; al salir se cancela la
+transcripción en curso. Los proyectos nuevos se crean con **Proyectos → Nuevo proyecto**.
 
 ## Pedir cambios hablando
 

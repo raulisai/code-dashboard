@@ -1,0 +1,48 @@
+.orb-visual { position: relative; display: block; width: 100%; height: 100%; border-radius: 50%; pointer-events: none; }
+.nav-orb { --orb: 46px; width: var(--orb); height: var(--orb); flex-shrink: 0; }
+.bottom-nav a.accent .bn-icon { width: 54px; height: 50px; display: grid; place-items: center; }
+.side-link .nav-orb { --orb: 25px; }
+.orb-rings i { position: absolute; border-radius: 50%; border: 1px solid #8fb0ff24; animation: ring 6s ease-in-out infinite; pointer-events: none; }
+.orb-rings i:nth-child(1) { inset: calc(var(--orb) * -.12); }
+.orb-rings i:nth-child(2) { inset: calc(var(--orb) * -.22); border-color: #8fb0ff16; animation-delay: -2s; }
+.orb-rings i:nth-child(3) { inset: calc(var(--orb) * -.33); border-color: #8fb0ff0c; animation-delay: -4s; }
+@keyframes ring { 50% { transform: scale(1.03); opacity: .55; } }
+.orb-core { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; scale: calc(1 + var(--level, 0) * .12); transition: scale .1s ease-out;
+  background: radial-gradient(circle at 50% 44%, #0a1222 0%, #0c1830 36%, #183062 60%, #5f84d8 84%, #cddcff 100%);
+  box-shadow: 0 0 calc(var(--orb) * .16) #4d7cff5c, 0 0 calc(var(--orb) * .5) #2a4fb02e, inset 0 0 calc(var(--orb) * .1) #b3c9ffaa, inset 0 calc(var(--orb) * -.05) calc(var(--orb) * .12) #7ea2ff70;
+  animation: orb-idle 7s ease-in-out infinite; }
+.orb-wave { position: absolute; border-radius: 50%; mix-blend-mode: screen; pointer-events: none; }
+.orb-wave.a { width: 132%; height: 76%; left: -26%; top: 42%; border-top: calc(var(--orb) * .014) solid #dfe9ffd9; filter: blur(1px);
+  box-shadow: 0 calc(var(--orb) * -.035) calc(var(--orb) * .09) #81a7ffb0, inset 0 calc(var(--orb) * .05) calc(var(--orb) * .12) #5b84ff60; transform: rotate(-16deg); animation: wave-a 9s ease-in-out infinite alternate; }
+.orb-wave.b { width: 112%; height: 62%; left: 4%; top: 14%; border-bottom: calc(var(--orb) * .009) solid #bcd0ffa8; filter: blur(1.4px);
+  box-shadow: 0 calc(var(--orb) * .035) calc(var(--orb) * .09) #6b8fff70; transform: rotate(28deg); animation: wave-b 11s ease-in-out infinite alternate; }
+.orb-swirl { position: absolute; inset: -12%; border-radius: 50%; background: conic-gradient(from 210deg, transparent 0 52%, #8eb0ff5c 68%, transparent 82%); filter: blur(calc(var(--orb) * .045)); mix-blend-mode: screen; animation: spin 16s linear infinite; }
+.orb-shine { position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle at 31% 21%, #ffffff42 0, transparent 20%), radial-gradient(circle at 50% 50%, transparent 62%, #d4e3ff2e 73%, transparent 78%); }
+@keyframes wave-a { to { transform: rotate(-3deg) translateY(-7%) scaleX(1.07); } }
+@keyframes wave-b { to { transform: rotate(42deg) translate(-5%, 6%); } }
+@keyframes orb-idle { 50% { transform: scale(1.02);  } }
+@keyframes orb-think { 50% {  transform: scale(.985); } }
+@keyframes orb-speak { to { transform: scale(1.045);  } }
+.orb-visual[data-state="working"] .orb-swirl { animation-duration: 4s; }
+.orb-visual[data-state="working"] .orb-wave.a { animation-duration: 3.2s; }
+.orb-visual[data-state="working"] .orb-wave.b { animation-duration: 4.4s; }
+.orb-visual[data-state="working"] .orb-rings i { animation-duration: 2.4s; border-color: #8fb0ff30; }
+.orb-visual[data-state="thinking"] .orb-core { animation: orb-think 1.5s ease-in-out infinite; }
+.orb-visual[data-state="thinking"] .orb-swirl { animation-duration: 2.5s; }
+.orb-visual[data-state="speaking"] .orb-core { animation: orb-speak .45s ease-in-out infinite alternate; }
+.orb-visual[data-state="listening"] .orb-core { box-shadow: 0 0 calc(var(--orb) * (.2 + var(--level, 0) * .25)) #5f8dff90, 0 0 calc(var(--orb) * .55) #2a4fb040, inset 0 0 calc(var(--orb) * .12) #c4d6ffcc, inset 0 calc(var(--orb) * -.05) calc(var(--orb) * .12) #7ea2ff80; animation: none; }
+.orb-visual[data-state="listening"] .orb-rings i { animation: none; scale: calc(1 + var(--level, 0) * .14); border-color: #a9c3ff40; transition: scale .1s; }
+.orb-visual[data-state="listening"] .orb-swirl { animation-duration: 3s; }
+
+.orb-dust { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; }
+.orb-dust i { position: absolute; left: var(--x); top: var(--y); width: 1.5%; height: 1.5%; max-width: 3px; max-height: 3px; background: #e2edff; border-radius: 50%; opacity: .2; box-shadow: 0 0 5px #9bbfff; animation: orb-drift var(--duration) var(--delay) ease-in-out infinite alternate; }
+.orb-satellites { position: absolute; inset: -14%; animation: orb-orbit 22s linear infinite; }
+.orb-satellites i { position: absolute; width: 1.5%; height: 1.5%; border-radius: 50%; background: #b7d1ff; box-shadow: 0 0 9px #7da8ff; opacity: .7; }
+.orb-satellites i:nth-child(1) { left: 16%; top: 13%; }
+.orb-satellites i:nth-child(2) { right: 0; top: 55%; opacity: .4; }
+.orb-satellites i:nth-child(3) { left: 30%; bottom: 0; opacity: .3; }
+@keyframes orb-drift { from { transform: translate3d(-3px, 4px, 0); opacity: .1; } to { transform: translate3d(7px, -12px, 0); opacity: .8; } }
+@keyframes orb-orbit { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .orb-visual, .orb-visual * { animation: none !important; transition: none !important; } }
+
+.orb-visual[data-paused="true"] * { animation-play-state: paused !important; }

@@ -26,12 +26,14 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
       const context = await browser.newContext({viewport: {width, height}, serviceWorkers: 'block', permissions: ['microphone'], locale: 'es-MX', hasTouch: mobile, isMobile: mobile});
       const page = await context.newPage();
       const errors = [], posts = [];
+      let rejectSend = false;
       let agent = {rev: '1', runs: [], queue: [], working: [], settings: {default_provider: 'codex'}};
       page.on('pageerror', error => { errors.push(String(error)); console.error('Browser error:', error.stack); });
       await context.route('**/api/**', async route => {
         const request = route.request(), url = new URL(request.url());
         const data = request.method() === 'POST' && url.pathname !== '/api/voice/transcribe' ? request.postDataJSON() : {};
         if (request.method() === 'POST') posts.push({path: url.pathname, ...data});
+        if (url.pathname === '/api/agent/send' && rejectSend) return route.fulfill({status: 503, json: {error: 'Fallo temporal de prueba'}});
         let result = {};
         if (url.pathname === '/api/state') result = {projects: [project('poleana-game', 4), project('codex-dashboard', 2), project('tacos', 0)], task_records: [], approvals: [], docker: [],
           memory: {}, disk: {}, tmux: [], automation: {}, cpu: {percent: 12}, tmux_ok: true, stacks: {auto: 'La IA decide'}, settings: {default_provider: 'codex'}, domain: 'devdj.lat'};
@@ -63,14 +65,25 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
       assert(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1), 'La vista en reposo no cabe en pantalla');
 
       // Proveedor y mensaje escrito.
-      await page.getByRole('radio', {name: 'Claude'}).click();
-      assert(await page.getByRole('radio', {name: 'Claude'}).getAttribute('aria-checked') === 'true', 'No cambió a Claude');
+      assert(await page.getByRole('radio').count() === 0, 'La conversación expone el selector de proveedor');
+      assert(await page.locator('.orb-visual .orb-dust i').count() >= 28, 'No se comparte la esfera con partículas');
       await page.getByRole('button', {name: 'Escribir'}).click();
       await page.locator('.general-compose textarea').fill('¿Cómo está el servidor?');
       await page.getByRole('button', {name: 'Enviar', exact: true}).click();
       await page.waitForFunction(() => !document.querySelector('.general-compose'));
       const sent = posts.find(p => p.path === '/api/agent/send');
-      assert(sent && sent.project === '_general' && sent.provider === 'claude' && sent.chat_id === 'main' && sent.text === '¿Cómo está el servidor?', 'Mensaje mal enviado');
+      assert(sent && sent.project === '_general' && sent.provider === 'codex' && sent.chat_id === 'main' && sent.text === '¿Cómo está el servidor?', 'Mensaje mal enviado');
+
+      // Un fallo conserva el borrador y permite reintentar.
+      rejectSend = true;
+      await page.getByRole('button', {name: 'Escribir', exact: true}).click();
+      await page.locator('.general-compose textarea').fill('Conserva este mensaje');
+      await page.getByRole('button', {name: 'Enviar', exact: true}).click();
+      await page.waitForTimeout(300);
+      assert(await page.locator('.general-compose textarea').inputValue() === 'Conserva este mensaje', 'Se perdió el mensaje fallido');
+      rejectSend = false;
+      await page.getByRole('button', {name: 'Enviar', exact: true}).click();
+      await page.waitForFunction(() => !document.querySelector('.general-compose'));
 
       // Trabajando: titular, proyecto detectado y actividad en tiempo real como en la referencia.
       const t = now();
@@ -82,6 +95,7 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
         {t: 'text', text: 'Generando reporte...'}]}]};
       await page.locator('.general h1', {hasText: 'Ejecutando pruebas'}).waitFor({timeout: 8000});
       await page.locator('.general-project', {hasText: 'poleana-game'}).waitFor();
+      await page.waitForTimeout(800); // Esperar el cambio de tamaño suave antes de medir layout.
       const rows = page.locator('.activity-row');
       assert(await rows.count() === 3, 'Filas de actividad incorrectas');
       assert(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1), 'La vista con actividad no cabe en pantalla');
@@ -100,7 +114,8 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
       await page.getByRole('menuitem', {name: 'Abrir poleana-game'}).waitFor();
       await page.getByRole('menuitem', {name: 'Ver conversación'}).click();
       await page.getByRole('dialog', {name: 'Conversación con el agente general'}).waitFor();
-      await page.getByRole('button', {name: 'Cerrar', exact: true}).click();
+      assert(await page.getByRole('dialog').getByRole('radio').count() === 0, 'El historial muestra modelos');
+      await page.getByRole('dialog', {name: 'Conversación con el agente general'}).getByRole('button', {name: 'Cerrar', exact: true}).click();
       await page.getByRole('button', {name: 'Detener'}).click();
       assert(posts.some(p => p.path === '/api/runs/r1/stop'), 'Detener no llamó a la API');
 
@@ -114,8 +129,10 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
       await page.locator('.pending-message', {hasText: 'Revisa los logs de poleana'}).waitFor({timeout: 8000});
       await page.waitForFunction(() => !document.querySelector('.pending-message'), null, {timeout: 6000});
       const spoken = posts.filter(p => p.path === '/api/agent/send').at(-1);
-      assert(/revisa los logs de poleana/i.test(spoken.text) && spoken.provider === 'claude', 'El dictado no se envió');
+      assert(/revisa los logs de poleana/i.test(spoken.text) && spoken.provider === 'codex', 'El dictado no se envió');
 
+      await page.emulateMedia({reducedMotion: 'reduce'});
+      assert(await page.locator('.orb-dust i').first().evaluate(el => getComputedStyle(el).animationName) === 'none', 'No respeta movimiento reducido');
       // Crear proyectos sigue solo en Proyectos.
       await page.goto(`${base}/projects`);
       await page.locator('a.new-project-button', {hasText: 'Nuevo proyecto'}).waitFor();

@@ -1,7 +1,7 @@
 // Service worker de Codex Manager: hace que la app abra al instante (y sin red
 // muestre la última interfaz). Nunca cachea /api: los datos siempre son en vivo.
-const SHELL = 'cm-shell-v6';
-const ASSETS = 'cm-assets-v6';
+const SHELL = 'cm-shell-v7';
+const ASSETS = 'cm-assets-v7';
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(SHELL).then(cache => cache.addAll(['/', '/manifest.webmanifest', '/icons/icon-192.png'])).then(() => self.skipWaiting()));

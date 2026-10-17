@@ -2,9 +2,15 @@
 
 > Leer antes de trabajar. Actualizar las secciones 0, 4 y 5 al terminar.
 
-Última actualización: 2026-10-17, 21:58 Europe/Berlin. Autor: Claude (agente general en la esfera central).
+Última actualización: 2026-10-17, 23:21 Europe/Berlin. Autor: Codex (refinado del agente general).
 
 ## 0. Estado en una línea
+
+**Refinado del agente general publicado:** esfera compartida `Orb.jsx` en barra y vista
+ampliada, ondas/partículas/órbitas, viaje y cambios de tamaño suaves. Sin selector
+Claude/Codex en esta vista ni en su historial: usa el proveedor predeterminado
+de Ajustes. Conversación con historial propio y respuesta directa, borradores
+persistentes y recuperación de envíos fallidos. Transcripción abortada al salir.
 
 **Última sesión (Claude): la esfera central es ahora el agente general. Publicado.**
 El botón del centro de la barra abre `/agent`: la esfera viaja desde la barra al
@@ -181,6 +187,17 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Refinado del agente general
+
+- No se cambia el motor ni se añade un orquestador nuevo: sigue ejecutando las
+  tareas del agente general con el proveedor predeterminado de Ajustes. Se oculta
+  su identidad en la experiencia de conversación por petición del usuario.
+- Las pruebas de voz usan micrófono sintético/transcripción simulada; experiencia
+  física del celular y voces de iOS pendientes. No se ejecutaron tareas de modelos.
+- Respaldo previo completo:
+  `/srv/platform/backups/codex-dashboard-auto/20261017T211909.373039Z/`.
+  Se conservan las limitaciones de seguridad y copias externas documentadas.
 
 ### Agente general / esfera central (sesión actual)
 
@@ -418,6 +435,30 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Refinado de esfera y conversación
+
+- `Orb.jsx`/`orb.css`: mismo componente en navegación móvil/escritorio y esfera
+  central, 14 partículas interiores y tres satélites, animaciones CSS, pausa al
+  ocultar pestaña y movimiento reducido. Sin canvas ni bucle JS de animación.
+- `General.jsx`: identidad única, proveedor de Ajustes, historial conversacional
+  sin selector técnico, respuestas sin corte de 260 caracteres, borrador privado
+  persistente, protección de doble envío y preservación del texto ante errores.
+  Un fallo al recargar después de un POST exitoso no provoca reenvíos duplicados.
+- `useOrbVoice.js`: AbortController cancela transcripción al salir; temporizador
+  de timeout liberado y ciclo de montaje corregido. Service worker actualizado.
+- Pruebas frontend: 11 aprobadas y build Vite correcto. Script de navegador
+  actualizado para verificar ausencia de selector, esfera compartida, fallo de
+  envío con borrador conservado, voz y movimiento reducido a varios tamaños.
+
+- Validación final sobre HTTPS público: GENERAL_BROWSER_OK a 360/390/1440,
+  sin errores JS, micrófono virtual y API interceptada (sin consumo de modelos).
+  Comprueba voz, actividad, detener, historial, envío fallido con borrador,
+  movimiento reducido y creación solo en Proyectos. Evidencias finales en
+  `artifacts/general-refined-final-20261017/` (browser.log y capturas).
+- Reconstruido con `docker compose up -d --build --wait --wait-timeout 90`;
+  dashboard y speech healthy. curl público: /agent y /health 200, API anónima401.
+  Preview local de pruebas retirado al finalizar.
 
 ### Agente general en la esfera central
 

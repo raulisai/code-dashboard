@@ -2,17 +2,18 @@ import React, {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'reac
 import {ArrowUp, Bot, Box, Check, FilePen, FlaskConical, FolderOpen, GitBranch, Globe2, Hammer, Keyboard, MessagesSquare, MoreHorizontal, Package,
   RotateCcw, Search, Server as ServerIcon, Square, SquareTerminal, Volume2, VolumeX, X} from 'lucide-react';
 import {useApp} from '../App.jsx';
-import {api, navigate, post, providerLabel, useNow, usePolling} from '../lib.js';
-import {ProviderMark, Spinner, toast} from '../ui.jsx';
-import {Approval, ChatConversation} from '../workspace/Agent.jsx';
+import {api, navigate, post, useNow, usePolling} from '../lib.js';
+import {Spinner, toast} from '../ui.jsx';
+import {Approval} from '../workspace/Agent.jsx';
 import {GENERAL, activityRows, detectProject, duration, headline, speakable} from '../general.js';
 import {voiceSettings} from '../voice.js';
+import Orb from '../Orb.jsx';
 import useOrbVoice from '../useOrbVoice.js';
 import '../general.css';
 
 const KIND_ICONS = {git: GitBranch, docker: Box, test: FlaskConical, web: Globe2, server: ServerIcon, package: Package, build: Hammer, edit: FilePen, read: Search, agent: Bot, terminal: SquareTerminal};
 const SUGGESTIONS = ['¿Cómo está el servidor?', '¿Qué proyectos están caídos?', 'Revisa los logs de poleana-game'];
-const PROVIDER_KEY = `cm-provider-${GENERAL}`, SPEAK_KEY = 'cm-general-speak', VOICE_TASKS = 'cm-general-voice-tasks';
+const SPEAK_KEY = 'cm-general-speak', VOICE_TASKS = 'cm-general-voice-tasks';
 const AUTO_SEND_SECONDS = 3;
 
 const stored = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
@@ -22,12 +23,15 @@ const voiceTasks = () => { try { return JSON.parse(sessionStorage.getItem(VOICE_
 export default function General() {
   const {state} = useApp();
   const [data, setData] = useState(null), [error, setError] = useState('');
-  const [provider, setProvider] = useState(() => stored(PROVIDER_KEY, null));
   const [speak, setSpeak] = useState(() => stored(SPEAK_KEY, 'on') === 'on'), [speaking, setSpeaking] = useState(false);
-  const [pending, setPending] = useState(null), [typing, setTyping] = useState(false), [text, setText] = useState(''), [sending, setSending] = useState(false);
+  const [pending, setPending] = useState(null), [typing, setTyping] = useState(false), [text, setText] = useState(() => stored('cm-draft-general', '')), [sending, setSending] = useState(false);
   const [menu, setMenu] = useState(false), [sheet, setSheet] = useState(false), [arrival, setArrival] = useState('');
+  const inFlight = useRef(false), transcript = useRef(null);
   const rev = useRef(''), previous = useRef({}), clock = useRef({}), orbRef = useRef(null), now = useNow(1000);
   const voice = useOrbVoice(value => setPending({text: value, until: Date.now() + AUTO_SEND_SECONDS * 1000}));
+
+  useEffect(() => { try { text ? localStorage.setItem('cm-draft-general', text) : localStorage.removeItem('cm-draft-general'); } catch { /* sin almacenamiento */ } }, [text]);
+  useEffect(() => { if (sheet && transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight; }, [sheet]);
 
   const load = async () => {
     const result = await api(`/api/agent?project=${GENERAL}&chat_id=main&rev=${rev.current}`);
@@ -46,7 +50,7 @@ export default function General() {
 
   const latest = data?.runs.at(-1);
   const running = latest && (latest.status === 'running' || latest.status === 'stopping');
-  const nextProvider = provider || latest?.provider || data?.settings?.default_provider || state.settings?.default_provider || 'codex';
+  const nextProvider = data?.settings?.default_provider || state.settings?.default_provider || 'codex';
   const events = useMemo(() => latest?.events || [], [latest]);
   const rows = useMemo(() => running ? activityRows(events, window.innerHeight < 680 ? 2 : window.innerHeight < 760 ? 3 : 4) : [], [events, running]);
   // Codex no manda horas por evento: se cronometra desde que el panel ve empezar cada comando.
@@ -82,7 +86,7 @@ export default function General() {
   // Mensaje dictado: se envía solo tras unos segundos salvo que lo edites o lo canceles.
   useEffect(() => {
     if (!pending) return;
-    const timer = setTimeout(() => { send(pending.text, true); setPending(null); }, Math.max(0, pending.until - Date.now()));
+    const timer = setTimeout(async () => { const ok = await send(pending.text, true); setPending(null); if (!ok) { setText(pending.text); setTyping(true); } }, Math.max(0, pending.until - Date.now()));
     return () => clearTimeout(timer);
   }, [pending]);
   useEffect(() => () => { try { speechSynthesis.cancel(); } catch { /* sin voz */ } }, []);
@@ -103,15 +107,15 @@ export default function General() {
 
   const send = async (message, viaVoice = false) => {
     const value = String(message || '').trim();
-    if (!value || sending) return false;
-    setSending(true);
+    if (!value || inFlight.current) return false;
+    inFlight.current = true; setSending(true);
     try {
       const result = await post('/api/agent/send', {project: GENERAL, chat_id: 'main', provider: nextProvider, text: value});
-      if (viaVoice && result.task?.id) sessionStorage.setItem(VOICE_TASKS, JSON.stringify([...voiceTasks().slice(-20), result.task.id]));
-      rev.current = ''; await load();
+      try { if (viaVoice && result.task?.id) sessionStorage.setItem(VOICE_TASKS, JSON.stringify([...voiceTasks().slice(-20), result.task.id])); } catch { /* el envío ya está confirmado */ }
+      rev.current = ''; try { await load(); } catch (err) { setError(err.message); }
       return true;
     } catch (err) { toast(err.message, 'error'); return false; }
-    finally { setSending(false); }
+    finally { inFlight.current = false; setSending(false); }
   };
   const tapOrb = () => {
     if (speaking) { speechSynthesis.cancel(); setSpeaking(false); }
@@ -119,14 +123,13 @@ export default function General() {
     if (voice.phase !== 'idle') return;
     setPending(null); voice.clearError(); unlockSpeech(); voice.start();
   };
-  const chooseProvider = value => { setProvider(value); remember(PROVIDER_KEY, value); };
   const act = async (request, success) => {
     try { const result = await request(); if (success !== false) toast(success || result.message); rev.current = ''; await load(); }
     catch (err) { toast(err.message, 'error'); }
   };
   const stopRun = () => latest && act(() => post(`/api/runs/${latest.id}/stop`, {}));
   const reset = () => { setMenu(false); if (window.confirm('¿Empezar una conversación nueva con el agente general? El historial se conserva.')) act(() => post('/api/agent/reset', {project: GENERAL, chat_id: 'main', provider: nextProvider})); };
-  const toggleSpeak = () => { const value = !speak; setSpeak(value); remember(SPEAK_KEY, value ? 'on' : 'off'); if (!value) { try { speechSynthesis.cancel(); } catch { /* sin voz */ } } };
+  const toggleSpeak = () => { const value = !speak; setSpeak(value); remember(SPEAK_KEY, value ? 'on' : 'off'); if (!value) { setSpeaking(false); try { speechSynthesis.cancel(); } catch { /* sin voz */ } } };
   const answer = (approval, decision, rememberRule = false) => act(() => post('/api/approvals', {run_id: approval.run_id, request_id: approval.id, decision, remember: rememberRule}), false);
   const submitTyped = async event => { event?.preventDefault(); if (await send(text)) { setText(''); setTyping(false); } };
 
@@ -135,10 +138,7 @@ export default function General() {
   const write = !typing && voice.phase === 'idle' && <button className="write-btn" onClick={() => setTyping(true)}><Keyboard size={15}/>Escribir</button>;
   return <div className={`general ${arrival ? `arrive-${arrival}` : ''} ${rows.length ? 'has-activity' : ''}`}>
     <header className="general-top">
-      <div className="provider-pill" role="radiogroup" aria-label="Agente">
-        {['codex', 'claude'].map(key => <button key={key} type="button" role="radio" aria-checked={nextProvider === key} className={nextProvider === key ? 'on' : ''} onClick={() => chooseProvider(key)}>
-          <ProviderMark provider={key} size={20}/>{providerLabel(key)}</button>)}
-      </div>
+      <div className="general-identity"><span className="dot live"/><span>Agente general<small>Tu espacio para pensar y hacer</small></span></div>
       <span className="grow"/>
       <div className="general-menu">
         <button className="round-btn" onClick={() => setMenu(!menu)} aria-label="Más opciones" aria-expanded={menu}><MoreHorizontal size={20}/></button>
@@ -175,14 +175,14 @@ export default function General() {
       <button ref={orbRef} className={`live-orb ${arrival === 'launch' ? 'launch' : ''}`} data-state={orbState} style={{'--level': voice.level}} onClick={tapOrb}
         onAnimationEnd={event => { if (event.target === event.currentTarget) setArrival(''); }}
         aria-label={voice.phase === 'listening' ? 'Terminar de hablar' : 'Hablar con el agente general'}>
-        <span className="orb-rings" aria-hidden="true"><i/><i/><i/></span>
-        <span className="orb-core" aria-hidden="true"><span className="orb-wave a"/><span className="orb-wave b"/><span className="orb-swirl"/><span className="orb-shine"/></span>
+        <Orb state={orbState} level={voice.level}/>
       </button>
     </div>
 
     <div className="general-caption" aria-live="polite">
+      {latest?.prompt && !pending && <p className="last-question">{latest.prompt}</p>}
       {pending ? <div className="pending-message"><p>«{pending.text}»</p>
-          <div className="pending-actions"><small>Enviando a {providerLabel(nextProvider)}{busy ? ' (en cola)' : ''}…</small><i className="countdown" style={{'--secs': `${AUTO_SEND_SECONDS}s`}}/>
+          <div className="pending-actions"><small>Enviando tu mensaje{busy ? ' (en cola)' : ''}…</small><i className="countdown" style={{'--secs': `${AUTO_SEND_SECONDS}s`}}/>
             <button className="btn small" onClick={() => { setText(pending.text); setPending(null); setTyping(true); }}>Editar</button>
             <button className="btn small" onClick={() => setPending(null)}>Cancelar</button></div></div>
         : voice.phase === 'listening' ? <p className="hint">Te escucho… <b>{Math.floor(voice.elapsed)}s</b> · toca la esfera al terminar</p>
@@ -190,7 +190,7 @@ export default function General() {
         : voice.phase === 'transcribing' ? <p className="hint"><Spinner size={13}/> Transcribiendo…</p>
         : voice.error ? <div className="caption-line"><p className="hint error">{voice.error}</p>{write}</div>
         : speaking ? <p className="hint">Hablando… toca la esfera para interrumpir</p>
-        : reply ? <div className="last-reply"><p>{reply.replace(/[*_`#>]/g, '').slice(0, 260)}</p><div className="caption-line"><button className="link-btn" onClick={() => setSheet(true)}>Ver conversación</button>{write}</div></div>
+        : reply ? <div className="last-reply"><p>{reply.replace(/[*_`#>]/g, '')}</p><div className="caption-line"><button className="link-btn" onClick={() => setSheet(true)}>Ver conversación</button>{write}</div></div>
         : <div className="caption-line"><p className="hint">Toca la esfera para hablar</p>{write}</div>}
       {!data && !error && <p className="hint"><Spinner size={13}/> Conectando…</p>}
       {error && <p className="hint error">{error}</p>}
@@ -199,7 +199,7 @@ export default function General() {
     </div>
 
     {typing && <form className="general-compose" onSubmit={submitTyped}>
-      <textarea autoFocus rows={1} value={text} onChange={event => setText(event.target.value)} placeholder={`Escribe a ${providerLabel(nextProvider)}…`}
+      <textarea autoFocus rows={1} value={text} onChange={event => setText(event.target.value)} placeholder="Cuéntame qué hacemos…"
         onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !coarse) { event.preventDefault(); submitTyped(); } if (event.key === 'Escape') setTyping(false); }}/>
       <button type="button" className="round-btn" onClick={() => setTyping(false)} aria-label="Cerrar teclado"><X size={18}/></button>
       <button className="send-btn" disabled={sending || !text.trim()} aria-label="Enviar">{sending ? <Spinner/> : <ArrowUp size={19}/>}</button>
@@ -207,7 +207,14 @@ export default function General() {
 
     {sheet && <div className="general-sheet" role="dialog" aria-modal="true" aria-label="Conversación con el agente general">
       <div className="sheet-head"><b>Agente general</b><span className="grow"/><button className="round-btn" onClick={() => setSheet(false)} aria-label="Cerrar"><X size={18}/></button></div>
-      <ChatConversation project={{name: GENERAL}} active chatId="main" attachments={false}/>
+      <div className="general-transcript" ref={transcript}>{(data?.runs || []).map(run => <React.Fragment key={run.id}>
+        <div className="conversation-message from-you"><small>Tú</small><p>{run.prompt}</p></div>
+        <div className="conversation-message"><small>Agente general</small><p>{run.result?.text || (run.status === 'running' ? 'Estoy en ello…' : run.error || 'Conversación finalizada.')}</p></div>
+      </React.Fragment>)}</div>
+      <form className="general-compose sheet-compose" onSubmit={submitTyped}>
+        <textarea aria-label="Mensaje al agente general" value={text} onChange={event => setText(event.target.value)} placeholder="Seguimos conversando…" rows={2}/>
+        <button className="send-btn" disabled={sending || !text.trim()} aria-label="Enviar mensaje">{sending ? <Spinner/> : <ArrowUp size={19}/>}</button>
+      </form>
     </div>}
   </div>;
 }

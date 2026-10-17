@@ -2,6 +2,7 @@ import React, {createContext, lazy, Suspense, useCallback, useContext, useEffect
 import {Home as HomeIcon, ListTodo, FolderOpen, Sparkles, Server as ServerIcon, Settings as SettingsIcon, ShieldAlert, WifiOff} from 'lucide-react';
 import {api, post, clearPrivateCache, navigate, useLocation, usePolling} from './lib.js';
 import {Spinner, Toaster} from './ui.jsx';
+import Orb from './Orb.jsx';
 import Login from './views/Login.jsx';
 import Home from './views/Home.jsx';
 import Projects from './views/Projects.jsx';
@@ -96,14 +97,14 @@ function Shell({path, children}) {
   const go = (event, to) => {
     event.preventDefault();
     // La esfera de la barra «viaja» al centro: el agente general anima su llegada desde esta posición.
-    if (to === '/agent' && path !== '/agent') window.cmOrbLaunch = event.currentTarget.querySelector('.creation-orb, .brand-orb')?.getBoundingClientRect() || null;
+    if (to === '/agent' && path !== '/agent') window.cmOrbLaunch = event.currentTarget.querySelector('.orb-visual, .brand-orb')?.getBoundingClientRect() || null;
     navigate(to); window.scrollTo(0, 0);
   };
   return <div className={path === '/agent' ? 'shell general-shell' : 'shell'}>
     <aside className="side">
       <a href="/" className="brand" onClick={event => go(event, '/')}><span className="brand-orb" aria-hidden="true"/><span>Codex <b>Manager</b></span></a>
       <nav>{items.map(item => <a key={item.to} href={item.to} onClick={event => go(event, item.to)} className={`side-link ${path === item.to ? 'on' : ''} ${item.accent ? 'accent' : ''}`}>
-        <item.icon size={18}/><span>{item.label}</span>{item.badge ? <em className={item.alert ? 'alert' : ''}>{item.badge}</em> : null}
+        <span className="side-nav-icon">{item.accent ? <Orb className="nav-orb"/> : <item.icon size={18}/>}</span><span>{item.label}</span>{item.badge ? <em className={item.alert ? 'alert' : ''}>{item.badge}</em> : null}
       </a>)}</nav>
       <div className="side-label">RECIENTES</div>
       <div className="side-projects">{recent.map(p => <a key={p.name} href={`/p/${p.name}`} onClick={event => go(event, `/p/${p.name}`)}>
@@ -116,7 +117,7 @@ function Shell({path, children}) {
       {children}
     </div>
     <nav className="bottom-nav" aria-label="Navegación principal">{items.filter(item => item.to !== '/settings').map(item => <a key={item.to} href={item.to} onClick={event => go(event, item.to)} aria-label={item.label} aria-current={path === item.to ? 'page' : undefined} className={`${path === item.to ? 'on' : ''} ${item.accent ? 'accent' : ''}`}>
-      <span className="bn-icon">{item.accent ? <span className="creation-orb" aria-hidden="true"><i/><i/><i/><i/></span> : <item.icon size={23} strokeWidth={1.6}/>}{item.badge ? <em className={item.alert ? 'alert' : ''}>{item.badge}</em> : null}</span><span>{item.label}</span>
+      <span className="bn-icon">{item.accent ? <Orb className="nav-orb"/> : <item.icon size={23} strokeWidth={1.6}/>}{item.badge ? <em className={item.alert ? 'alert' : ''}>{item.badge}</em> : null}</span><span>{item.label}</span>
     </a>)}</nav>
   </div>;
 }

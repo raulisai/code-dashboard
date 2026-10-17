@@ -7,9 +7,9 @@ const MAX_SECONDS = 120, SILENCE_SECONDS = 1.8;
  * y entrega el texto transcrito por el Whisper local. El nivel del micrófono anima la esfera. */
 export default function useOrbVoice(onText) {
   const [phase, setPhase] = useState('idle'), [level, setLevel] = useState(0), [error, setError] = useState(''), [elapsed, setElapsed] = useState(0);
-  const capture = useRef(null), ticket = useRef(0), alive = useRef(true), deliver = useRef(onText);
+  const capture = useRef(null), ticket = useRef(0), alive = useRef(true), controller = useRef(null), deliver = useRef(onText);
   deliver.current = onText;
-  useEffect(() => () => { alive.current = false; cancel(); }, []);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; cancel(); }; }, []);
 
   const release = () => {
     const current = capture.current;
@@ -23,6 +23,7 @@ export default function useOrbVoice(onText) {
   };
   const cancel = () => {
     ticket.current++;
+    controller.current?.abort(); controller.current = null;
     const current = capture.current;
     if (current) { current.cancelled = true; if (current.recorder.state !== 'inactive') current.recorder.stop(); }
     release();
@@ -59,7 +60,11 @@ export default function useOrbVoice(onText) {
         if (blob.size < 64 || current.total < .4 || !current.heard) { setPhase('idle'); setError(current.heard ? 'Fue muy corto. Toca la esfera y habla.' : 'No te escuché. Toca la esfera y habla más cerca.'); return; }
         setPhase('transcribing');
         try {
-          const result = await transcribeAudio(blob, voiceSettings(), AbortSignal.timeout ? AbortSignal.timeout(305000) : undefined);
+          const abort = new AbortController(); controller.current = abort;
+          const timeout = setTimeout(() => abort.abort(), 305000);
+          let result;
+          try { result = await transcribeAudio(blob, voiceSettings(), abort.signal); }
+          finally { clearTimeout(timeout); if (controller.current === abort) controller.current = null; }
           if (!alive.current || identity !== ticket.current) return;
           const text = formatDictation(result.text || '');
           setPhase('idle');
