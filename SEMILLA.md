@@ -8,6 +8,15 @@
 
 ## 0. Estado en una línea
 
+**Agente general: entrada animada y partículas por acción (18 octubre, Claude).**
+Al entrar, la esfera de la barra inferior crece hacia el centro y en su hueco aparece
+girando el botón «+» de opciones (solo celular; en escritorio sigue bajo la esfera).
+La esfera cambia de forma con la actividad real: web → globo de meridianos con banda
+de escaneo, revisar código → átomo/radar, Docker/paquetes/compilar → cubo, Git →
+doble hélice, pruebas → anillo que gira rápido, editar → disco con ondas, subagentes →
+tres esferas; pensando → remolino; reposo → esfera. Transición suave y destello al
+cambiar. Publicado; pruebas en sección 5.
+
 **Agente general: ejecución en vivo arriba y controles plegados (18 octubre, Claude).**
 Pedido a Codex, que falló por cupo; lo hizo Claude. Mientras trabaja, bajo la
 cabecera aparecen en texto translúcido (sin caja) los últimos 3 comandos tal cual
@@ -259,6 +268,12 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Entrada animada + formas de partículas (18 octubre)
+
+- Falta que el usuario lo vea en su celular (rendimiento con 1250 partículas y
+  transiciones). Si va lento, bajar el número en `Orb.jsx` o la velocidad `MOTION`.
+- Con movimiento reducido no hay animación: la forma cambia sin transición.
 
 ### Ejecución en vivo + controles plegados (18 octubre)
 
@@ -612,6 +627,24 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Entrada animada y formas por acción (Claude, 18 octubre)
+
+- `particles.js`: `shapeOf(kind)` y `shapePoints(shape, n)` (globe, scan, cube, helix,
+  torus, wave, cluster; deterministas). Prueba nueva en `tests/presentations.test.mjs`.
+- `Orb.jsx`: prop `shape` (`data-shape`); cada partícula se interpola hacia su forma,
+  `MOTION` fija giro/inclinación por forma, banda de escaneo, ondas al editar, destello
+  al cambiar. Con movimiento reducido se redibuja solo al cambiar estado/forma.
+- `views/General.jsx`: pasa `shapeOf(status.kind)` mientras trabaja; mide el hueco de
+  `.bottom-nav a.accent .bn-icon` y, si existe, monta `.general-dock.in-nav` en un
+  portal (`createPortal` a `body`, porque `.general` aísla su apilado) en esa posición.
+  `general.css`: la esfera de la barra se desvanece agrandándose; `dock-arrive` hace
+  aparecer el «+» de 52 px girando tras la llegada de la esfera.
+- Pruebas: 168 Python + 16 frontend OK; `GENERAL_KEYBOARD_OK` 390/360/1440 y
+  `GENERAL_BROWSER_OK` 320/360/390/768/1440/740×390 (comprueba «+» centrado en la
+  barra, `data-shape` torus → cube → sphere). Capturas `shape-*.png` y `nav-dock-390.png`.
+- Publicado con `docker compose up -d --build --wait`; healthy, `/health` 200, chunks
+  publicados con la nueva vista.
 
 ### Ejecución en vivo arriba y controles plegados (Claude, 18 octubre)
 

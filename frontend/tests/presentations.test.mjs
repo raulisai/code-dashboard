@@ -20,3 +20,14 @@ test('nube esférica estable y finita',()=>{
   assert.deepEqual(a,b);
   for(const p of a) assert.ok(Number.isFinite(p.x+p.y+p.z) && Math.abs(p.x*p.x+p.y*p.y+p.z*p.z-1)<1e-9);
 });
+test('formas de partículas por acción: finitas, acotadas y distintas',async()=>{
+  const {shapeOf,shapePoints}=await import('../src/particles.js');
+  assert.equal(shapeOf('web'),'globe'); assert.equal(shapeOf('docker'),'cube'); assert.equal(shapeOf('idle'),'sphere');
+  const sphere=shapePoints('sphere',600);
+  for(const shape of ['globe','scan','cube','helix','torus','wave','cluster']){
+    const points=shapePoints(shape,600);
+    assert.equal(points.length,600);
+    for(const p of points) assert.ok(Number.isFinite(p.x+p.y+p.z) && Math.hypot(p.x,p.y,p.z)<=1.2, shape);
+    assert.ok(points.some((p,i)=>Math.hypot(p.x-sphere[i].x,p.y-sphere[i].y,p.z-sphere[i].z)>.3), `${shape} igual a la esfera`);
+  }
+});

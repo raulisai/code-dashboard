@@ -52,7 +52,7 @@ const assert = (ok, message) => { if (!ok) throw new Error(message); };
       await visualHeight(height);
       assert(!await page.locator('.general').evaluate(el => el.classList.contains('keyboard-open')), 'El teclado quedó marcado al cerrarse');
       await page.getByRole('button', {name: 'Cerrar teclado', exact: true}).click();
-      await contained('.general-dock', height, 'Controles tras cerrar teclado');
+      await contained('.dock-toggle', height, 'Controles tras cerrar teclado');
 
       await page.getByRole('button', {name: 'Ver conversación', exact: true}).focus();
       await page.getByRole('button', {name: 'Ver conversación', exact: true}).click();

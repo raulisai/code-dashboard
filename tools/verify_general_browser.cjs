@@ -25,13 +25,15 @@ async function checkLayout(page, name, width, height) {
   const metrics = await page.evaluate(() => {
     const rect = selector => { const el = document.querySelector(selector); if (!el || !el.getClientRects().length) return null;
       const {top, bottom, left, right, width, height} = el.getBoundingClientRect(); return {top, bottom, left, right, width, height}; };
-    return {orb: rect('.live-orb'), header: rect('.general-top'), actions: rect('.general-dock'), live: rect('.general-live'), response: rect('.general-response'),
+    return {orb: rect('.live-orb'), header: rect('.general-top'), actions: rect('.dock-toggle'), live: rect('.general-live'), response: rect('.general-response'),
       nav: rect('.bottom-nav'), width: innerWidth, height: innerHeight, scroll: document.documentElement.scrollWidth};
   });
   const fits = metrics.scroll <= metrics.width + 1 && metrics.orb.top >= (metrics.live?.bottom ?? metrics.header.bottom) - 1
     && (!metrics.live || metrics.live.top >= metrics.header.bottom - 1 && metrics.live.right <= metrics.width + 1)
-    && metrics.orb.bottom <= (metrics.response?.top ?? metrics.actions.top) + 1
-    && metrics.actions.bottom <= (metrics.nav?.top ?? metrics.height) + 1;
+    && metrics.orb.bottom <= (metrics.response?.top ?? (metrics.nav ? metrics.nav.top : metrics.actions.top)) + 1
+    // En el celular el «+» ocupa el hueco central de la barra; en escritorio queda bajo la esfera.
+    && (metrics.nav ? Math.abs(metrics.actions.left + metrics.actions.width / 2 - metrics.width / 2) < 3 && metrics.actions.bottom > metrics.nav.top && metrics.actions.top < metrics.nav.top + 10
+      : metrics.actions.top >= metrics.orb.bottom - 1 && metrics.actions.bottom <= metrics.height + 1);
   if (!fits) await page.screenshot({path: `${out}/layout-error-${name}-${width}x${height}.png`});
   assert(fits, `Elementos solapados o fuera de pantalla (${name}): ${JSON.stringify(metrics)}`);
 }
@@ -101,7 +103,7 @@ async function checkLayout(page, name, width, height) {
       assert(await page.locator('.general-live').count() === 0, 'La barra de ejecución aparece en reposo');
       assert(await page.locator('.general-action').count() === 0, 'Los controles no empiezan plegados');
       const dock = await page.locator('.dock-toggle').boundingBox();
-      assert(dock.width <= 48 && dock.height <= 48, `El botón de controles no es pequeño: ${JSON.stringify(dock)}`);
+      assert(dock.width <= 54 && dock.height <= 54, `El botón de controles no es pequeño: ${JSON.stringify(dock)}`);
       await page.getByRole('button', {name: 'Controles', exact: true}).click();
       const panel = await page.locator('.general-actions').boundingBox();
       assert(panel.x >= -1 && panel.x + panel.width <= width + 1 && panel.y >= 0 && panel.y + panel.height <= dock.y + 1, `Controles desplegados fuera de sitio: ${JSON.stringify(panel)}`);
@@ -171,6 +173,7 @@ async function checkLayout(page, name, width, height) {
       assert(live0.y >= header0.y + header0.height - 1 && live0.y + live0.height <= orb0.y + 1, 'La barra de ejecución no está arriba de la esfera');
       assert(!/poleana-game/.test(await page.locator('.general').innerText()) && await page.locator('.activity-row:visible').count() === 0, 'El panel de actividad aparece sin pedirlo');
       assert(await page.locator('.dock-toggle[data-state="working"] .dock-badge').count() === 1, 'El botón de controles no indica que hay trabajo');
+      assert(await page.locator('.live-orb .orb-visual').getAttribute('data-shape') === 'torus', 'Las partículas no cambian de forma con las pruebas');
       await page.waitForTimeout(800); // Esperar el cambio de tamaño suave antes de medir layout.
       assert(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1), 'La vista con actividad no cabe en pantalla');
       assert(await orb.getAttribute('data-state') === 'working', 'La esfera no indica trabajo');
@@ -213,6 +216,9 @@ async function checkLayout(page, name, width, height) {
       await label.filter({hasText: 'Desplegando'}).waitFor({timeout: 8000});
       await live.locator('.live-line.running[data-age="0"] code', {hasText: 'docker compose up -d --build'}).waitFor();
       assert(await status.getAttribute('data-kind') === 'docker', 'El icono no cambió a Docker');
+      assert(await page.locator('.live-orb .orb-visual').getAttribute('data-shape') === 'cube', 'Las partículas no forman el cubo al desplegar');
+      await page.waitForTimeout(1300);
+      await page.locator('.live-orb').screenshot({path: `${out}/shape-cube-${width}x${height}.png`});
       assert(await page.locator('.orb-state-icon svg').innerHTML() !== previousIcon, 'El dibujo del icono no cambió');
 
       // Menú compacto y conversación completa en una hoja voluntaria.
@@ -239,6 +245,7 @@ async function checkLayout(page, name, width, height) {
       agent = {...agent, rev: '3', working: [], runs: [{...agent.runs[0], status: 'done', result: {text: 'Listo: **poleana-game** está en línea.'}}]};
       await label.filter({hasText: 'Disponible'}).waitFor({timeout: 8000});
       assert(await page.locator('.general-live').count() === 0, 'La barra de ejecución sigue al terminar');
+      assert(await page.locator('.live-orb .orb-visual').getAttribute('data-shape') === 'sphere', 'Las partículas no vuelven a la esfera');
       await orb.click();
       await page.waitForFunction(() => document.querySelector('.live-orb').dataset.state === 'listening', null, {timeout: 8000});
       await page.waitForTimeout(1500);

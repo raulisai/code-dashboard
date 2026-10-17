@@ -1,10 +1,12 @@
 import React, {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
+import {createPortal} from 'react-dom';
 import {Activity, ArrowUp, AudioLines, Bot, Box, Brain, Check, CircleAlert, CircleCheck, Clock3, FilePen, FlaskConical, FolderOpen, GitBranch, Globe2, Hammer, Keyboard, MessageSquareText, MessagesSquare, Mic, MoreHorizontal, Package,
   Plus, RotateCcw, Search, Server as ServerIcon, ShieldCheck, Sparkles, Square, SquareTerminal, Volume2, VolumeX, X} from 'lucide-react';
 import {useApp} from '../App.jsx';
 import {api, navigate, post, useNow, usePolling} from '../lib.js';
 import {Spinner, toast} from '../ui.jsx';
 import {Approval} from '../workspace/Agent.jsx';
+import {shapeOf} from '../particles.js';
 import {GENERAL, activityRows, detectProject, duration, presence, speakable} from '../general.js';
 import {voiceSettings} from '../voice.js';
 import Presentations from '../Presentations.jsx';
@@ -29,6 +31,7 @@ export default function General() {
   const [conversation, setConversation] = useState(false), [voiceEngine, setVoiceEngine] = useState(() => stored('cm-general-voice-engine', 'auto'));
   const [menu, setMenu] = useState(false), [controls, setControls] = useState(false), [sheet, setSheet] = useState(false), [details, setDetails] = useState(false), [responseOpen, setResponseOpen] = useState(false), [arrival, setArrival] = useState('');
   const requestedTask = useRef(null), menuRef = useRef(null), dockRef = useRef(null), toggleRef = useRef(null), inputRef = useRef(null), sheetInputRef = useRef(null);
+  const [slot, setSlot] = useState(null);
   const [viewport, setViewport] = useState(() => ({height: window.visualViewport?.height || window.innerHeight, keyboard: false}));
   const inFlight = useRef(false), transcript = useRef(null), continuous = useRef(false), waiting = useRef(false), voiceRef = useRef(null), resumeTimer = useRef(null), editing = useRef(false);
   continuous.current = conversation; editing.current = typing;
@@ -62,6 +65,11 @@ export default function General() {
     return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape); };
   }, [controls]);
   useEffect(() => { if (viewport.keyboard) setControls(false); }, [viewport.keyboard]);
+  // En el celular el botón «+» ocupa el hueco de la esfera de la barra inferior (la esfera ya está en el centro).
+  useLayoutEffect(() => {
+    const icon = document.querySelector('.general-shell .bottom-nav a.accent .bn-icon'), box = icon?.getClientRects().length ? icon.getBoundingClientRect() : null;
+    setSlot(box?.width ? {x: box.left + box.width / 2, y: box.top + box.height / 2} : null);
+  }, [viewport]);
   useLayoutEffect(() => {
     for (const input of [inputRef.current, sheetInputRef.current]) {
       if (!input) continue;
@@ -185,6 +193,24 @@ export default function General() {
   const openSheet = () => { setMenu(false); endConversation(); setSheet(true); };
   // Cada opción pliega el botón y deja el foco en él, para que los diálogos lo devuelvan ahí al cerrarse.
   const pick = action => () => { toggleRef.current?.focus({preventScroll: true}); setControls(false); action(); };
+  // En la barra inferior va en un portal: el contexto de apilado de .general quedaría debajo de la barra.
+  const dockElement = <div className={`general-dock ${slot ? 'in-nav' : ''}`} ref={dockRef} style={slot ? {'--dock-x': `${slot.x}px`, '--dock-y': `${slot.y}px`} : undefined}>
+        <button ref={toggleRef} className="dock-toggle" onClick={() => setControls(!controls)} aria-label="Controles" title="Controles"
+          aria-expanded={controls} aria-controls="general-controls" data-state={conversation ? 'conversation' : running ? 'working' : ''}>
+          <Plus size={21} strokeWidth={1.8}/>{(conversation || running) && <i className="dock-badge"/>}
+        </button>
+        {controls && <div className="general-actions" id="general-controls" role="group" aria-label="Controles del agente general">
+          <button className={`general-action ${conversation ? 'selected' : ''}`} onClick={pick(conversation ? endConversation : tapOrb)}
+            aria-label={conversation ? 'Terminar conversación' : 'Hablar'} title={conversation ? 'Terminar conversación' : 'Hablar'} disabled={!conversation && voice.phase !== 'idle'}>
+            {conversation ? <Square size={19}/> : <Mic size={20}/>}<span>{conversation ? 'Terminar' : 'Hablar'}</span>
+          </button>
+          <button className={`general-action ${typing ? 'selected' : ''}`} onClick={pick(typing ? () => setTyping(false) : openTyping)} aria-label="Escribir" aria-expanded={typing} title="Escribir"><Keyboard size={20}/><span>Escribir</span></button>
+          <button className="general-action" onClick={pick(() => setDetails(true))} aria-label="Ver actividad" title="Ver actividad"><Activity size={20}/><span>Actividad</span>{running && <i className="action-live"/>}</button>
+          {reply && <button className={`general-action ${showResponse ? 'selected' : ''}`} onClick={pick(() => setResponseOpen(!responseOpen))} aria-label="Ver respuesta" aria-expanded={showResponse} title="Ver respuesta"><MessagesSquare size={20}/><span>Respuesta</span></button>}
+          {running && <button className="general-action stop-action" onClick={pick(stopRun)} disabled={latest.status === 'stopping'} aria-label="Detener tarea" title="Detener tarea"><Square size={18}/><span>Detener</span></button>}
+        </div>}
+      </div>;
+  const dock = slot ? createPortal(dockElement, document.body) : dockElement;
   return <div className={`general ${arrival ? `arrive-${arrival}` : ''} ${showResponse ? 'has-response' : ''} ${live ? 'has-live' : ''} ${typing ? 'is-typing' : ''} ${viewport.keyboard ? 'keyboard-open' : ''}`}
     style={{'--view-height': `${viewport.height}px`}}>
     <header className="general-top">
@@ -222,7 +248,7 @@ export default function General() {
         <button ref={orbRef} className={`live-orb ${arrival === 'launch' ? 'launch' : ''}`} data-state={orbState} onClick={tapOrb}
           onAnimationEnd={event => { if (event.target === event.currentTarget) setArrival(''); }}
           aria-label={voice.phase === 'listening' ? 'Terminar de hablar' : 'Hablar con el agente general'}>
-          <Orb state={orbState} level={voice.level}/>
+          <Orb state={orbState} level={voice.level} shape={running ? shapeOf(status.kind) : 'sphere'}/>
         </button>
         <span className="orb-state-icon" key={status.kind} aria-hidden="true"><StatusIcon size={21} strokeWidth={1.6}/></span>
       </div>
@@ -248,22 +274,7 @@ export default function General() {
       {latest?.status === 'error' && !busy && <button className="btn small" onClick={() => send(latest.prompt)}>Reintentar con una conexión disponible</button>}
     </div>}
 
-    <div className="general-dock" ref={dockRef}>
-      <button ref={toggleRef} className="dock-toggle" onClick={() => setControls(!controls)} aria-label="Controles" title="Controles"
-        aria-expanded={controls} aria-controls="general-controls" data-state={conversation ? 'conversation' : running ? 'working' : ''}>
-        <Plus size={21} strokeWidth={1.8}/>{(conversation || running) && <i className="dock-badge"/>}
-      </button>
-      {controls && <div className="general-actions" id="general-controls" role="group" aria-label="Controles del agente general">
-        <button className={`general-action ${conversation ? 'selected' : ''}`} onClick={pick(conversation ? endConversation : tapOrb)}
-          aria-label={conversation ? 'Terminar conversación' : 'Hablar'} title={conversation ? 'Terminar conversación' : 'Hablar'} disabled={!conversation && voice.phase !== 'idle'}>
-          {conversation ? <Square size={19}/> : <Mic size={20}/>}<span>{conversation ? 'Terminar' : 'Hablar'}</span>
-        </button>
-        <button className={`general-action ${typing ? 'selected' : ''}`} onClick={pick(typing ? () => setTyping(false) : openTyping)} aria-label="Escribir" aria-expanded={typing} title="Escribir"><Keyboard size={20}/><span>Escribir</span></button>
-        <button className="general-action" onClick={pick(() => setDetails(true))} aria-label="Ver actividad" title="Ver actividad"><Activity size={20}/><span>Actividad</span>{running && <i className="action-live"/>}</button>
-        {reply && <button className={`general-action ${showResponse ? 'selected' : ''}`} onClick={pick(() => setResponseOpen(!responseOpen))} aria-label="Ver respuesta" aria-expanded={showResponse} title="Ver respuesta"><MessagesSquare size={20}/><span>Respuesta</span></button>}
-        {running && <button className="general-action stop-action" onClick={pick(stopRun)} disabled={latest.status === 'stopping'} aria-label="Detener tarea" title="Detener tarea"><Square size={18}/><span>Detener</span></button>}
-      </div>}
-    </div>
+    {dock}
 
     {typing && <form className="general-compose" id="general-compose" onSubmit={submitTyped}>
       <textarea ref={inputRef} aria-label="Mensaje al agente general" autoFocus rows={1} value={text} onChange={event => setText(event.target.value)} placeholder="Escribe tu mensaje…"
