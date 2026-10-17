@@ -33,7 +33,7 @@ class VersionTests(IsolatedConfig, unittest.TestCase):
 
     def test_first_action_creates_repo_without_secrets_or_dependencies(self):
         self.write('index.html', 'hola'); self.write('.env', 'TOKEN=secreto'); self.write('.env.example', 'TOKEN=')
-        self.write('node_modules/x/index.js', 'x'); self.write('dist/app.js', 'build')
+        self.write('node_modules/x/index.js', 'x'); self.write('dist/app.js', 'build'); self.write('.claude/settings.local.json', '{}')
         result = gitops.record('alpha', 'Editar index.html', 'edit')
         self.assertTrue(result['sha'], result)
         tracked = sh(self.root, 'ls-files').split()

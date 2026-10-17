@@ -19,7 +19,9 @@ EXCLUDE_MARK = '# Codex Manager: nunca versionar secretos ni dependencias'
 LARGE_MARK = '# Codex Manager: archivos de más de 50 MB (no se versionan)'
 # Se añaden a .git/info/exclude: no modifican el .gitignore del proyecto y solo
 # afectan a archivos sin seguimiento (lo ya versionado sigue versionado).
-SAFE_EXCLUDES = ['.env', '.env.*', '!.env.example', '*.pem', '*.key', 'node_modules/', '__pycache__/', '.venv/', 'venv/', '.codex-manager/']
+SAFE_EXCLUDES = ['.env', '.env.*', '!.env.example', '*.pem', '*.key', 'node_modules/', '__pycache__/', '.venv/', 'venv/', '.codex-manager/',
+                 # Ajustes locales de Claude Code: el host los ignora globalmente, el contenedor no.
+                 '**/.claude/settings.local.json']
 # Solo en repositorios creados por el panel, donde nadie ha decidido aún qué versionar.
 NEW_REPO_EXCLUDES = ['dist/', 'build/', '.next/', '.cache/', 'target/', '*.log', '.DS_Store']
 IN_PROGRESS = {'MERGE_HEAD': 'una fusión', 'REVERT_HEAD': 'una reversión', 'CHERRY_PICK_HEAD': 'un cherry-pick',
