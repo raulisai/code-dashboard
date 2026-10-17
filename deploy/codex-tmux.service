@@ -1,0 +1,22 @@
+[Unit]
+Description=Servidor tmux del host para Codex Manager
+# Antes que Docker: si el contenedor del panel arrancara primero, Docker crearía
+# /tmp/tmux-1002 como root y tmux ya no podría usarlo.
+Before=docker.service
+After=local-fs.target
+
+[Service]
+Type=simple
+User=dv1
+Group=dv1
+Environment=HOME=/home/dv1 LANG=C.UTF-8 SHELL=/bin/bash PATH=/home/dv1/.local/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=/srv/projects
+ExecStart=/srv/projects/codex-dashboard/bin/cm-tmux-keepalive
+# Solo se detiene el bucle de vigilancia: el servidor tmux y las sesiones de los
+# agentes siguen vivos aunque se reinicie este servicio.
+KillMode=process
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

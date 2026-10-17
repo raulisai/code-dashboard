@@ -1,0 +1,94 @@
+name: codex-dashboard
+services:
+  dashboard:
+    build: .
+    init: true
+    restart: unless-stopped
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+      start_interval: 2s
+    env_file: .env
+    group_add:
+      - "988"
+    environment:
+      PUBLIC_ORIGIN: https://codex-dashboard.devdj.lat
+      SPEECH_URL: http://speech:3001
+      PROJECTS_DIR: /projects
+      HOST_PROJECTS_DIR: /srv/projects
+      HOST_APP_DIR: /srv/projects/codex-dashboard
+      CONFIG_DIR: /config
+      HOST_CONFIG_DIR: /home/dv1/.config/codex-automation
+      CODEX_LOG_DIR: /logs/codex
+      TASKS_FILE: /config/tasks.tsv
+      USAGE_FILE: /config/usage.tsv
+      STATE_CACHE_TTL: ${STATE_CACHE_TTL:-4}
+      TMUX_SOCKET: /tmux/default
+    volumes:
+      - /srv/projects:/projects
+      - /home/dv1/logs/codex:/logs/codex:ro
+      - /home/dv1/.config/codex-automation:/config
+      - /home/dv1/.gitconfig:/home/monitor/.gitconfig:ro
+      - /tmp/tmux-1002:/tmux
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [internal, proxy]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.codex-dashboard.rule: Host(`codex-dashboard.devdj.lat`)
+      traefik.http.routers.codex-dashboard.entrypoints: websecure
+      traefik.http.routers.codex-dashboard.tls: "true"
+      traefik.http.routers.codex-dashboard.tls.certresolver: letsencrypt
+      traefik.http.routers.codex-dashboard.middlewares: codex-dashboard-limit
+      traefik.http.middlewares.codex-dashboard-limit.ratelimit.average: "25"
+      traefik.http.middlewares.codex-dashboard-limit.ratelimit.burst: "50"
+      traefik.http.services.codex-dashboard.loadbalancer.server.port: "3000"
+    mem_limit: 384m
+    cpus: 1.0
+    # Hilos de aiohttp + terminales web abiertas + llamadas a docker/tmux/git.
+    pids_limit: 256
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  speech:
+    build:
+      context: .
+      dockerfile: Dockerfile.speech
+    init: true
+    restart: unless-stopped
+    expose: ["3001"]
+    networks: [internal]
+    mem_limit: 2g
+    cpus: 1.5
+    pids_limit: 96
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3001/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+networks:
+  internal:
+    internal: true
+  proxy:
+    external: true

@@ -1,0 +1,18 @@
+FROM python:3.12-slim
+WORKDIR /speech
+ENV PYTHONUNBUFFERED=1 HF_HUB_DISABLE_XET=1 OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=1
+COPY speech/requirements.txt ./
+RUN pip install --no-cache-dir --upgrade pip==26.2.1 \
+    && pip install --no-cache-dir -r requirements.txt
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('Systran/faster-whisper-small', revision='536b0662742c02347bc0e980a01041f333bce120', local_dir='/opt/model', allow_patterns=['config.json','model.bin','tokenizer.json','vocabulary.txt'])"
+COPY --chown=1002:1002 speech/server.py ./
+RUN useradd --uid 1002 --create-home speech \
+    && python -m pip uninstall -y pip \
+    && rm -rf /usr/local/lib/python3.12/ensurepip /root/.cache/pip \
+    && apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+USER speech
+EXPOSE 3001
+HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3001/health', timeout=3)"
+CMD ["python", "-u", "server.py"]

@@ -1,0 +1,10 @@
+.env
+.git
+__pycache__
+**/__pycache__
+frontend/node_modules
+frontend/dist
+tests
+bin
+deploy
+artifacts

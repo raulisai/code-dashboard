@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Mantiene vivo el servidor tmux del host que usa Codex Manager.
+# El panel corre en Docker y solo habla con este servidor a través del socket;
+# si el servidor no existiera, un `tmux new-session` lanzado desde el contenedor
+# arrancaría un servidor *dentro* del contenedor, sin acceso a codex/claude.
+set -uo pipefail
+socket=${TMUX_SOCKET:-/tmp/tmux-$(id -u)/default}
+mkdir -p "$(dirname "$socket")" && chmod 700 "$(dirname "$socket")"
+ensure() {
+    if ! tmux -S "$socket" has-session -t cm-keepalive 2>/dev/null; then
+        tmux -S "$socket" new-session -d -s cm-keepalive -c /srv/projects 'exec sleep infinity'
+    fi
+    tmux -S "$socket" set-option -g exit-empty off >/dev/null 2>&1 || true
+    # Más historial para revisar la salida de los agentes desde la terminal web.
+    tmux -S "$socket" set-option -g history-limit 20000 >/dev/null 2>&1 || true
+}
+ensure
+while sleep 60; do ensure; done
