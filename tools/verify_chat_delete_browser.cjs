@@ -43,24 +43,25 @@ const assert = (ok, message) => { if (!ok) throw new Error(message); };
       });
       await page.addInitScript(() => { if (!sessionStorage.getItem('seeded')) { sessionStorage.setItem('seeded', '1'); localStorage.setItem('cm-draft-alpha-wrong', 'borrador'); } });
       await page.goto(`${base}/p/alpha?chat=main`);
+      const openOptions = async () => { if (!await page.locator('.chat-options').evaluate(el => el.open)) await page.getByLabel('Opciones del chat', {exact:true}).click(); };
       const selector = page.getByLabel('Sesión de chat', {exact: true});
       await page.locator('.run').nth(1).waitFor();
       assert(await page.locator('.agent-meta', {hasText: 'retoma el chat'}).count() === 1, 'Falta la marca de traspaso');
       // El último turno fue de Claude: al elegir Codex se indica que retoma el mismo chat.
-      await page.getByRole('radio', {name: 'Codex'}).click();
+      await openOptions(); await page.getByRole('radio', {name: 'Codex'}).click();
       await page.locator('.conv-state', {hasText: 'Codex retoma el chat'}).waitFor();
-      await page.getByRole('radio', {name: 'Claude'}).click();
+      await openOptions(); await page.getByRole('radio', {name: 'Claude'}).click();
       await page.locator('.conv-state', {hasText: 'Conversación continua'}).waitFor();
       console.log('Provider switch labels OK');
 
-      await selector.selectOption('wrong');
-      await page.getByRole('button', {name: 'Eliminar chat', exact: true}).waitFor();
+      await openOptions(); await selector.selectOption('wrong');
+      await openOptions(); await page.getByRole('button', {name: 'Eliminar chat', exact: true}).waitFor();
       const dimensions = await page.evaluate(() => ({width: innerWidth, scroll: document.documentElement.scrollWidth,
         bar: document.querySelector('.chat-selector').getBoundingClientRect().right, select: document.querySelector('.chat-selector select').getBoundingClientRect().width}));
       assert(dimensions.scroll <= dimensions.width + 1 && dimensions.bar <= dimensions.width + 1, `Desbordamiento ${width}`);
       assert(dimensions.select >= 90, `Selector demasiado estrecho (${dimensions.select}px) a ${width}`);
       await page.screenshot({path: `${out}/chat-delete-${width}.png`});
-      await page.getByRole('button', {name: 'Eliminar chat', exact: true}).click();
+      await openOptions(); await page.getByRole('button', {name: 'Eliminar chat', exact: true}).click();
       await page.waitForFunction(() => document.querySelector('[aria-label="Sesión de chat"]')?.value === 'main');
       assert(dialogs[0].includes('Me equivoqué') && dialogs[0].includes('1 mensaje(s) en cola'), 'Confirmación incompleta');
       assert(posts.some(p => p.action === 'delete' && p.chat_id === 'wrong' && p.project === 'alpha'), 'No se pidió eliminar');
@@ -69,7 +70,7 @@ const assert = (ok, message) => { if (!ok) throw new Error(message); };
       assert(new URL(page.url()).searchParams.get('chat') === 'main', 'URL apunta al chat eliminado');
       console.log('Delete chat OK');
 
-      await page.getByRole('button', {name: 'Vaciar chat principal', exact: true}).click();
+      await openOptions(); await page.getByRole('button', {name: 'Vaciar chat principal', exact: true}).click();
       await page.locator('.intro').waitFor();
       assert(dialogs[1].includes('Vaciar el Chat principal'), 'Confirmación de vaciado ausente');
       assert(posts.some(p => p.action === 'delete' && p.chat_id === 'main'), 'No se pidió vaciar');

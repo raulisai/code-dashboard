@@ -1,6 +1,6 @@
 import React, {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {AlertTriangle, ArrowDown, ArrowUp, Bot, Brain, Check, CheckCircle2, ChevronDown, Circle, CircleDot, Clock3, FileCode2, FilePen, FilePlus2, FileText,
-  GitCommitHorizontal, Globe2, ListChecks, Paperclip, RotateCcw, Search, ShieldCheck, ShieldQuestion, Square, SquareTerminal, Trash2, Wrench, X} from 'lucide-react';
+  GitCommitHorizontal, Globe2, ListChecks, MoreHorizontal, Paperclip, RotateCcw, Search, ShieldCheck, ShieldQuestion, Square, SquareTerminal, Trash2, Wrench, X} from 'lucide-react';
 import {api, duration, navigate, post, providerLabel, relPath, setQuery, useLocation, useNow, usePolling} from '../lib.js';
 import ModelPicker from './ModelPicker.jsx';
 import Markdown from '../Markdown.jsx';
@@ -67,7 +67,7 @@ export default function Agent({project, active}) {
     finally { setSaving(false); }
   };
   const current = chats.find(chat => chat.id === selected);
-  return <div className="agent-chats">
+  const chatControls = <>
     <div className="chat-selector">
       <label htmlFor={`chat-${project.name}`}>Chat</label>
       <select className="select" id={`chat-${project.name}`} value={selected} onChange={event => choose(event.target.value)} aria-label="Sesión de chat">
@@ -84,12 +84,26 @@ export default function Agent({project, active}) {
       <button type="button" className="ghost-icon" onClick={() => setEditing(false)} aria-label="Cancelar"><X size={16}/></button>
     </form>}
     <small className="chat-shared-note">Claude y Codex comparten el contexto de cada chat · Archivos compartidos entre chats</small>
+  </>;
+  return <div className="agent-chats">
     {error && <div className="timeline-error">{error}</div>}
-    <ChatConversation key={`${project.name}:${selected}:${generation}`} project={project} active={active} chatId={selected}/>
+    <ChatConversation key={`${project.name}:${selected}:${generation}`} project={project} active={active} chatId={selected} chatControls={chatControls} chatTitle={current?.title || 'Chat principal'}/>
   </div>;
 }
 
-function ChatConversation({project, active, chatId, attachments = true}) {
+function ChatConversation({project, active, chatId, attachments = true, chatControls, chatTitle}) {
+  const options = useRef(null);
+  useEffect(() => {
+    const close = event => {
+      const el = options.current;
+      if (el?.open && (event.key === 'Escape' || (event.type === 'pointerdown' && !el.contains(event.target)))) {
+        el.open = false;
+        if (event.key === 'Escape') el.querySelector('summary')?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', close); document.addEventListener('keydown', close);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', close); };
+  }, []);
   const name = project.name;
   const [data, setData] = useState(null), [error, setError] = useState('');
   const storedProvider = providerKey(name, chatId);
@@ -208,12 +222,18 @@ function ChatConversation({project, active, chatId, attachments = true}) {
   const lastProvider = data?.runs.at(-1)?.provider;
   const switching = !!(lastProvider && lastProvider !== nextProvider);
   return <div className="agent">
-    <div className="agent-bar">
+    <details className="chat-options" ref={options}>
+      <summary aria-label="Opciones del chat"><span>{chatTitle || 'Chat'}</span><MoreHorizontal size={20}/></summary>
+      <div className="chat-options-panel">
+      {chatControls}
+      <div className="agent-bar">
       <ProviderPicker value={nextProvider} onChange={chooseProvider} compact/>
       <span className="grow"/>
       <span className="conv-state" title={sessionId ? `Sesión ${sessionId}` : ''}>{!hasContext ? 'Conversación nueva' : switching ? `${providerLabel(nextProvider)} retoma el chat` : 'Conversación continua'}</span>
       {hasContext && <button className="btn small" onClick={reset} disabled={!!busy} title="Reiniciar el contexto de este chat para Claude y Codex"><RotateCcw size={14}/>Reiniciar</button>}
     </div>
+      </div>
+    </details>
 
     <div className="timeline" ref={scroller} onScroll={onScroll}>
       {!data ? <div className="timeline-loading"><Spinner/> Cargando conversación…</div>
@@ -234,11 +254,11 @@ function ChatConversation({project, active, chatId, attachments = true}) {
       <div className="composer-box">
         <textarea ref={composerInput} value={text} onChange={e => setText(e.target.value)} rows={1} placeholder={`Pide algo a ${providerLabel(nextProvider)}…`}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !coarse) { e.preventDefault(); send(); } }}/>
-        {name !== '_general' && <ModelPicker provider={nextProvider} model={selectedModel} effort={selectedEffort} onChange={chooseModel} configured={data?.settings?.[`${nextProvider}_model`]}/>}
         <div className="composer-tools">
           {attachments && <label className="icon-btn" title="Adjuntar archivo o imagen" aria-label="Adjuntar">{uploading ? <Spinner/> : <Paperclip size={18}/>}<input type="file" multiple hidden onChange={upload}/></label>}
           <VoiceButton active={active} disabled={sending || uploading} onText={value => setText(current => insertDictation(current, value))}
             onSend={value => sendMessage(insertDictation(text, value))} sendLabel={`Enviar a ${providerLabel(nextProvider)}`}/>
+          {name !== '_general' && <ModelPicker provider={nextProvider} model={selectedModel} effort={selectedEffort} onChange={chooseModel} configured={data?.settings?.[`${nextProvider}_model`]}/>}
           <span className="grow"/>
           {data?.working.length > 0 && <small className="muted queue-hint">Se pondrá en cola</small>}
           <button className="send-btn" disabled={sending || uploading || (!text.trim() && !files.length)} aria-label="Enviar">{sending ? <Spinner/> : <ArrowUp size={19}/>}</button>

@@ -12,7 +12,7 @@ const project = {name, description:'Panel para administrar proyectos, agentes y 
 let state = {projects:[project,{...project,name:'mi-app',description:'Segunda aplicación',working:[],running_containers:0,container_details:[],activity:1}],task_records:tasks,approvals:[],docker:services,memory:{total_kb:8000000,available_kb:4000000},disk:{percent:'32%',used:'10 GB',total:'30 GB',free:'20 GB'},cpu:{percent:14,cores:4,load_1m:.3},sessions:[{name:`${name}-shell`,command:'bash',attached:false}],automation:{last_message:'Todo al día'},tmux_ok:true,docker_ok:true,stacks:{auto:'La IA decide',web:'Web',react:'React'},settings:{default_provider:'codex',claude_permission:'auto',codex_sandbox:'full',claude_model:'',codex_model:'',auto_commit:'on'},domain:'devdj.lat'};
 const agent = {rev:'1',runs:[],queue:[],working:[],sessions:{},settings:state.settings,rules:[]};
 (async()=>{fs.mkdirSync(out,{recursive:true});const browser=await chromium.launch({headless:true});try{
-for(const width of [320,360,390,600,768,1024,1440]){
+for(const width of (process.env.CM_TEST_WIDTHS || '320,360,390,600,768,1024,1440').split(',').map(Number)){
 const context=await browser.newContext({viewport:{width,height:844},serviceWorkers:'block',locale:'es-MX'});const page=await context.newPage();const errors=[];
 page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));await page.route('https://preview.example.test/**',r=>r.fulfill({contentType:'text/html',body:'<h1>Vista previa de prueba</h1>'}));
 await page.routeWebSocket('**/api/term**', ws => {ws.send(JSON.stringify({t:'o',d:'Terminal de prueba\r\n'}));});
@@ -31,7 +31,7 @@ else if(u.pathname==='/api/logs')data={entries:[]};
 else if(u.pathname==='/api/voice')data={ready:true,local:true};
 return route.fulfill({json:data});});
 for(const [path,selector] of [['/projects','.project-status-grid'],['/','.dashboard-home'],['/queue','.task-list'],['/server','.container-list'],['/settings','.settings'],['/new','.create'],['/agent','.general'],['/p/codex-dashboard?tab=agent','.panel-agent'],['/p/codex-dashboard?tab=files','.panel-files'],['/p/codex-dashboard?tab=console','.panel-console'],['/p/codex-dashboard?tab=deploy','.panel-deploy'],['/p/codex-dashboard?tab=git','.panel-git'],['/p/codex-dashboard?tab=preview','.panel-preview'],['/p/codex-dashboard?tab=shell','.panel-shell']]){
-console.log(`Checking ${width} ${path}`);await page.goto(base+path,{waitUntil:'domcontentloaded'});await page.locator(selector).first().waitFor();await page.waitForTimeout(120);
+await page.goto(base+path,{waitUntil:'domcontentloaded'});await page.locator(selector).first().waitFor().catch(async err=>{await page.screenshot({path:`${out}/failure-${width}.png`,fullPage:true});console.error(await page.locator('body').innerText());throw err;});await page.waitForTimeout(120);
 const overflow=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,offenders:[...document.querySelectorAll('body *')].filter(el=>el.getBoundingClientRect().right>innerWidth+2 && getComputedStyle(el).position!=='fixed').slice(0,6).map(el=>el.className)}));
 assert(overflow.scroll<=width+1,`${width} ${path}: ${JSON.stringify(overflow)}`);
 if(path==='/projects'){

@@ -4,9 +4,16 @@
 
 Última actualización anterior: 2026-10-18, 00:05 Europe/Berlin. Autor: Codex (agente general: voz, partículas, continuidad y presentaciones).
 
-Última actualización: 2026-10-18, 00:09 Europe/Berlin. Autor: Codex (validación final del agente general).
+Última actualización: 2026-10-18 Europe/Berlin. Codex: Proyectos compacto y revisión responsive.
 
 ## 0. Estado en una línea
+
+**Proyectos compacto publicado (18 octubre):** miniatura de 64 px, estado de
+contenedores, servicios activos, agentes trabajando/cola y siete herramientas
+visibles con ayudas breves. Selector de aplicación + flechas reemplazan la gran
+ilustración y los puntos. Móvil apilado y escritorio en dos columnas. Mejoras
+responsive en Cola, Servidor, Ajustes, Crear y cabecera del workspace. Estado
+Detenida/Parcialmente activa también en workspace. Ver pruebas en sección 5.
 
 **Input del chat corregido (18 octubre, Codex):** la altura se recalcula con el
 texto y al activar la vista; vuelve a una línea después de enviar o borrar, y
@@ -220,6 +227,16 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Proyectos compacto y pantallas responsive (18 octubre)
+
+- Falta valoración visual en el celular físico del usuario (Safari/iOS incluido).
+- Estado En línea/Parcialmente activa/Detenida refleja contenedores; no se añade
+  monitor HTTP de cada aplicación. No afirmar que todo contenedor activo responde.
+- Validación de navegador con API y WebSocket simulados: no ejecuta comandos,
+  despliegues, tareas de agentes ni cambios en proyectos reales. Capturas con fixtures.
+- Respaldo completo previo: `/srv/platform/backups/codex-dashboard-auto/20261017T221109.239557Z/`.
+
 
 ### Input del chat (18 octubre)
 
@@ -533,6 +550,27 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Proyectos compacto y pantallas responsive (18 octubre)
+
+- `Projects.jsx`: conserva búsqueda, selección persistente, favoritos, borrado y
+  actividad. Selector nativo + flechas, imagen 64 px, resumen operativo enlazado,
+  botón Abrir aplicación y accesos directos a agente/vista previa/archivos/
+  servicios/logs/versiones/terminal. Cada herramienta incluye una explicación.
+- `neon.css`: disposición apilada/dos columnas según espacio, nombres largos,
+  controles con 16 px para evitar zoom de inputs en iOS, filas móviles con botones
+  de 44 px, etiquetas de estado de peticiones visibles y cabecera compacta del workspace.
+- `Workspace.jsx`: diferencia Detenida de Sin desplegar y Parcialmente activa.
+- README y prueba histórica de Inicio/Proyectos adaptados a la nueva navegación.
+- Build Vite correcto. Primera revisión local: 12 vistas × 7 tamaños
+  (320/360/390/600/768/1024/1440), sin desbordamiento ni errores JS, búsqueda,
+  selector, flechas, estados y acceso a archivos comprobados. Comprobación final
+  sobre despliegue en `tools/verify_responsive_browser.cjs` incluye 14 vistas
+  (también vista previa y terminal con WebSocket simulado) y estado sin proyectos.
+- Evidencias: `artifacts/responsive-20261018/` y subcarpeta `published/`.
+- Publicado con `docker compose up -d --build`; `/projects` HTTPS 200, `/health`
+  ok, dashboard y speech healthy. No se modificó autenticación ni datos de apps.
+
 
 ### Input del chat: restaurar tamaño al enviar (18 octubre, Codex)
 
