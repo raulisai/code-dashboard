@@ -70,6 +70,28 @@ elige tecnología y agente y crea el proyecto. Se genera un repositorio con su
 primer commit, Dockerfile, Compose, healthcheck y límites de recursos. El scaffold
 publica únicamente `public/`, no los archivos de configuración del proyecto.
 
+Arriba se elige el origen: **Nuevo desde cero** o **Desde un repo Git**.
+
+- **Desde un repo Git**: pega la URL (`https://github.com/usuario/repo`,
+  `git@github.com:usuario/repo.git`, `usuario/repo` u otro servidor https/ssh). Se
+  valida al dejar de escribir (`git ls-remote` en el host con la llave SSH del VPS,
+  así que los privados de esa cuenta funcionan) y se elige rama si hay varias. Se
+  clona con todo el historial y ramas (quedan en Versiones); GitHub se guarda como
+  `origin` por SSH. No se despliega a ciegas: el agente lo adapta al patrón del
+  servidor (Dockerfile/compose con Traefik, healthcheck, límites) y lo publica. Un
+  repo vacío recibe el scaffold como un proyecto nuevo.
+- **Nuevo desde cero**: «Crear también el repositorio en GitHub (privado)» viene
+  marcado cuando GitHub está conectado en **Ajustes → GitHub** (token fine-grained
+  con *Administration: Read and write*, o clásico con `repo`; se guarda cifrado en
+  `/config/github.json`). Crea el repo, lo enlaza como `origin` y sube el primer
+  commit. Si falla, el proyecto local se crea igual y se informa el motivo.
+- El repo Git local se crea siempre. Después no hay push automático: se mantiene la
+  política del servidor (push bloqueado por defecto).
+
+Las operaciones remotas las ejecuta `bin/cm-repo.py` en el host (vía tmux): solo
+https/ssh, sin pedir contraseñas (`GIT_TERMINAL_PROMPT=0`, `GIT_ALLOW_PROTOCOL`),
+sin hooks ni submódulos, y solo dentro de `/srv/projects`.
+
 Cada proyecto tiene agente, vista previa, archivos, terminal, consola,
 despliegues y Git. En móvil las herramientas adicionales están en **Más**;
 en escritorio hay una vista previa lateral. Los mensajes admiten código,

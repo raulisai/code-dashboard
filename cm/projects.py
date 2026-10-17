@@ -303,35 +303,109 @@ Contexto:
 - Al final resume en pocas líneas qué construiste y cómo se usa.'''
 
 
+def import_prompt(name, url, branch, description):
+    wish = f'\nIndicaciones del usuario: «{description}»\n' if description else ''
+    return f'''Este proyecto se importó desde el repositorio Git {url} (rama {branch or "predeterminada"}). No partas de cero: revisa el código existente y déjalo funcionando y publicado en este servidor.
+{wish}
+Contexto:
+- Directorio: {config.HOST_PROJECTS}/{name}. URL pública: https://{name}.{config.DOMAIN} (Traefik y HTTPS ya configurados).
+- Si faltan, crea Dockerfile y compose.yaml; si existen, ajústalos al patrón del servidor sin publicar puertos en el host: proyecto/router/servicio `{name}`, red externa `proxy`, Traefik con Host(`{name}.{config.DOMAIN}`), entrypoint websecure y certresolver letsencrypt, puerto interno en la etiqueta del servicio, healthcheck y límites de CPU, memoria y procesos. Añade README.md y .env.example si faltan.
+- No imprimas ni subas secretos; documenta en .env.example las variables necesarias. No hagas push al repositorio remoto.
+- Cuando termines: ejecuta `docker compose up -d --build` en el directorio del proyecto, comprueba que https://{name}.{config.DOMAIN} responde 200 y haz un commit con git.
+- Al final resume en pocas líneas qué encontraste, qué cambiaste y cómo se usa.'''
+
+
+def name_problem(name):
+    if not re.fullmatch(config.PROJECT_NAME, name or ''): return 'Nombre inválido: usa minúsculas, números y guiones; no termines con guion'
+    if name.startswith(config.INTERNAL_SESSION_PREFIXES): return 'Ese nombre está reservado para las sesiones del sistema'
+    if name in ('app', 'api', 'backend', 'www', 'traefik'): return 'Ese nombre es demasiado genérico para un subdominio; elige otro'
+    if (config.PROJECTS / name).exists(): return 'Ese proyecto ya existe'
+    return ''
+
+
+def _git(staging, *args):
+    code, out, error = run_full(['git', '-c', 'core.hooksPath=/dev/null', '-C', str(staging), *args], timeout=15)
+    if code: raise RuntimeError(error)
+    return out
+
+
+def _commit_scaffold(staging, name, description, base, init=True):
+    for relative, content in scaffold_files(name, description, base).items():
+        path = staging / relative
+        if path.exists(): continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+    if init: _git(staging, 'init', '-q', '-b', 'main')
+    _git(staging, 'add', '-A')
+    for key, fallback in (('user.name', 'Codex Manager'), ('user.email', 'codex-manager@localhost')):
+        if not run('git', '-C', str(staging), 'config', '--get', key): _git(staging, 'config', key, fallback)
+    _git(staging, 'commit', '-q', '-m', 'Scaffold inicial desde Codex Manager')
+
+
+def _publish(staging, target):
+    os.chmod(staging, 0o750)
+    os.replace(staging, target)
+    invalidate()
+
+
 def create_project(name, description='', stack='auto'):
     """Crea el scaffold de forma atómica (todo o nada) y su primer commit."""
-    if not re.fullmatch(config.PROJECT_NAME, name or ''): return False, 'Nombre inválido: usa minúsculas, números y guiones; no termines con guion'
-    if name.startswith(config.INTERNAL_SESSION_PREFIXES): return False, 'Ese nombre está reservado para las sesiones del sistema'
-    if name in ('app', 'api', 'backend', 'www', 'traefik') : return False, 'Ese nombre es demasiado genérico para un subdominio; elige otro'
-    target = config.PROJECTS / name
-    if target.exists(): return False, 'Ese proyecto ya existe'
+    problem = name_problem(name)
+    if problem: return False, problem
     base = STACKS.get(stack, STACKS['auto'])[1]
     config.PROJECTS.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=f'.{name}-creating-', dir=config.PROJECTS))
     try:
-        for relative, content in scaffold_files(name, description, base).items():
-            path = staging / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content)
-        commands = [['init', '-q', '-b', 'main'], ['add', '-A']]
-        for args in commands:
-            code, _, error = run_full(['git', '-C', str(staging), *args], timeout=15)
-            if code: raise RuntimeError(error)
-        for key, fallback in (('user.name', 'Codex Manager'), ('user.email', 'codex-manager@localhost')):
-            if not run('git', '-C', str(staging), 'config', '--get', key):
-                code, _, error = run_full(['git', '-C', str(staging), 'config', key, fallback], timeout=15)
-                if code: raise RuntimeError(error)
-        code, _, error = run_full(['git', '-C', str(staging), 'commit', '-q', '-m', 'Scaffold inicial desde Codex Manager'], timeout=15)
-        if code: raise RuntimeError(error)
-        os.chmod(staging, 0o750)
-        os.replace(staging, target)
-        invalidate()
+        _commit_scaffold(staging, name, description, base)
+        _publish(staging, config.PROJECTS / name)
         return True, f'Proyecto {name} creado; se publicará en https://{name}.{config.DOMAIN}'
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
         return False, 'No se pudo crear el proyecto; no se guardaron archivos incompletos'
+
+
+def import_project(name, raw_url, branch='', description=''):
+    """Clona un repositorio existente como proyecto (todo o nada). Un repo vacío recibe el
+    scaffold como un proyecto nuevo. Devuelve (ok, mensaje, info)."""
+    from . import repos
+    problem = name_problem(name)
+    if problem: return False, problem, {}
+    try:
+        url, repo = repos.normalize(raw_url)
+        if not repos.valid_branch(branch): raise repos.RepoError('Rama inválida')
+    except repos.RepoError as error:
+        return False, str(error), {}
+    config.PROJECTS.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f'.{name}-creating-', dir=config.PROJECTS))
+    try:
+        repos.clone(url, staging, name, branch)
+        if not (staging / '.git').is_dir(): raise repos.RepoError('La copia descargada no es un repositorio Git')
+        empty = not run('git', '-C', str(staging), 'rev-parse', '--verify', '-q', 'HEAD')
+        if empty: _commit_scaffold(staging, name, description, 'web', init=False)
+        current = run('git', '-C', str(staging), 'rev-parse', '--abbrev-ref', 'HEAD')
+        _publish(staging, config.PROJECTS / name)
+        info = {'url': url, 'repo': repo, 'branch': current, 'empty': empty,
+                'compose': any((config.PROJECTS / name / f).exists() for f in ('compose.yaml', 'compose.yml', 'docker-compose.yml', 'docker-compose.yaml'))}
+        return True, f'Proyecto {name} importado desde {repo} (rama {current})', info
+    except repos.RepoError as error:
+        shutil.rmtree(staging, ignore_errors=True)
+        return False, str(error), {}
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        return False, 'No se pudo importar el repositorio; no se guardaron archivos incompletos', {}
+
+
+def publish_github(name, description=''):
+    """Crea el repo privado en GitHub, lo enlaza como origin y sube el primer commit.
+    El proyecto local ya existe: un fallo aquí solo se informa."""
+    from . import repos
+    try:
+        created = repos.github_create(name, description)
+    except repos.RepoError as error:
+        return False, f'Repo de GitHub no creado: {error}', {}
+    try:
+        _git(config.PROJECTS / name, 'remote', 'add', 'origin', created['ssh_url'])
+        repos.push(name)
+    except (repos.RepoError, RuntimeError) as error:
+        return False, f'Repo {created["full_name"]} creado en GitHub, pero no se pudo subir: {str(error).strip()[:200]}', created
+    return True, f'Repo privado {created["full_name"]} creado en GitHub y subido', created

@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import {Bell, Download, LogOut, Save, ShieldCheck, Trash2} from 'lucide-react';
+import {Bell, Download, GitBranch, LogOut, Save, ShieldCheck, Trash2} from 'lucide-react';
 import {useApp} from '../App.jsx';
 import {api, post, clearPrivateCache} from '../lib.js';
 import {ProviderPicker, Spinner, toast} from '../ui.jsx';
@@ -56,6 +56,7 @@ export default function Settings({onLogout}) {
   return <div className="page-pad settings">
     <header className="page-title"><div><div className="eyebrow">PREFERENCIAS</div><h1>Ajustes</h1></div></header>
     <SecuritySettings/>
+    <GitHubSettings/>
     <ProjectTrash/>
 
     <section className="block">
@@ -96,4 +97,26 @@ export default function Settings({onLogout}) {
       <button className="btn danger-soft" onClick={logout}><LogOut size={16}/>Cerrar sesión</button>
     </section>
   </div>;
+}
+
+function GitHubSettings() {
+  const [status, setStatus] = useState(null), [token, setToken] = useState(''), [busy, setBusy] = useState(false);
+  useEffect(() => { api('/api/github').then(setStatus).catch(() => setStatus({connected: false})); }, []);
+  const send = async body => {
+    setBusy(true);
+    try { const result = await post('/api/github', body, {timeout: 30000}); setStatus(result); setToken(''); toast(result.message, 'success'); }
+    catch (err) { toast(err.message, 'error'); }
+    finally { setBusy(false); }
+  };
+  return <section className="block github-settings">
+    <div className="block-head"><h2><GitBranch size={18}/>GitHub</h2>{status?.connected && <span className="tag">Conectado</span>}</div>
+    {!status ? <p className="muted"><Spinner size={14}/> Comprobando…</p> : status.connected ? <>
+      <p className="muted">Cuenta <b>{status.login}</b>. Al crear un proyecto nuevo puedes crear también su repositorio privado en GitHub; se sube el primer commit con la llave SSH del servidor. Después no se sube nada automáticamente.</p>
+      <button className="btn danger-soft" disabled={busy} onClick={() => window.confirm('¿Desconectar GitHub? Se borra el token guardado; los repos existentes no cambian.') && send({action: 'disconnect'})}>{busy ? <Spinner/> : null}Desconectar</button>
+    </> : <form onSubmit={event => { event.preventDefault(); if (token.trim()) send({action: 'connect', token: token.trim()}); }}>
+      <p className="muted">Para crear repos nuevos hace falta un token. En GitHub: Settings → Developer settings → Personal access tokens → <b>Fine-grained</b>, acceso a todos tus repositorios con permiso <b>Administration: Read and write</b> (o un token clásico con <b>repo</b>). Se guarda cifrado en el servidor. Importar y clonar repos no lo necesita.</p>
+      <div className="two-col"><input className="input" type="password" autoComplete="off" value={token} onChange={event => setToken(event.target.value)} placeholder="github_pat_…" aria-label="Token de GitHub"/>
+        <button className="btn primary" disabled={busy || !token.trim()}>{busy ? <Spinner/> : <GitBranch size={16}/>}Conectar</button></div>
+    </form>}
+  </section>;
 }

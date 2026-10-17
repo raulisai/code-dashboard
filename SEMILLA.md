@@ -2,9 +2,19 @@
 
 > Leer antes de trabajar. Actualizar las secciones 0, 4 y 5 al terminar.
 
-Última actualización: 2026-10-17, 21:05 Europe/Berlin. Autor: Claude (versionador Git).
+Última actualización: 2026-10-17, 21:25 Europe/Berlin. Autor: Claude (crear proyecto desde repo Git / repo en GitHub).
 
 ## 0. Estado en una línea
+
+**Última sesión (Claude): crear proyectos desde un repo Git y opción de repo en
+GitHub. Publicado.** En Crear hay «Nuevo desde cero | Desde un repo Git». Importar
+valida la URL en vivo (ls-remote en el host con la llave SSH de `raulisai`), deja
+elegir rama, clona con historial y el agente lo adapta y publica. En nuevos, la
+opción «Crear también el repositorio en GitHub (privado)» viene marcada cuando
+GitHub está conectado en Ajustes → GitHub. **Falta que el usuario pegue un token
+de GitHub** (no hay `gh` ni token en el VPS): sin él la opción sale desactivada y
+el proyecto solo tiene repo local. **150 Python + 5 Node OK**, `REPO_CREATE_BROWSER_OK`
+y `CHAT_DELETE_BROWSER_OK` contra la URL real; validación e importación reales.
 
 **Última sesión (Claude): Git convertido en versionador, publicado.** Cada acción
 es un commit propio (respuesta de agente, editor, archivos, subidas, despliegue),
@@ -154,6 +164,24 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
 
 ## 4. Pendientes y límites de validación
 
+### Crear desde repo Git / repo en GitHub (sesión actual)
+
+- **Pendiente del usuario:** Ajustes → GitHub → pegar token (fine-grained con
+  Administration: Read and write sobre todos sus repos, o clásico `repo`). No se
+  ha probado la creación real en GitHub (sin token); la API está cubierta con mocks.
+  El push inicial por SSH sí usa la llave real `id_ed25519_agent` (cuenta raulisai).
+- Importar no despliega a ciegas un repo con código: encola al agente (prompt
+  `projects.import_prompt`). Si el usuario apaga ese interruptor, solo se clona.
+- Sin push automático posterior (política `CODEX_GIT_PUSH=0`). Si el usuario pide
+  sincronizar con GitHub, sería una función nueva y explícita (botón «Subir»).
+- Repos de otros servidores por https privados no funcionan (no hay credenciales);
+  por SSH dependen de que la llave del VPS esté autorizada allí. `accept-new`
+  acepta la huella SSH de un servidor nuevo la primera vez.
+- Clonado con límite de 10 min y como máximo 2 operaciones simultáneas; un repo
+  enorme podría superar el tiempo de la petición web (660 s en el navegador).
+- Rollback: imagen `codex-dashboard:before-repo-import-20261017`; archivos y
+  parche en `/srv/platform/backups/codex-dashboard-before-repo-import-20261017/`.
+
 ### Versionador Git (sesión actual)
 
 - Publicado y probado con Git real en una instancia aislada; **falta que el
@@ -185,10 +213,9 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
 - El resumen incluye petición, respuesta final (≤2 500 car.), archivos editados y
   commit de `versions.json`; no incluye la salida de comandos. Si hiciera falta
   más detalle, el agente debe mirar Git/archivos (el encabezado se lo pide).
-- La imagen publicada **no** contiene el versionador. Cuando el agente del chat
-  «add features» termine, desplegar desde `/srv/projects/codex-dashboard` (incluye
-  ambos cambios) y repetir pruebas. `bin/cm-runner.py` del árbol ya prefiere
-  `request.txt` para que los commits del versionador no incluyan el resumen.
+- Resuelto: el versionador y este cambio se publicaron juntos (`286a2f9`).
+  `bin/cm-runner.py` prefiere `request.txt` para que los commits del versionador
+  no incluyan el resumen de traspaso.
 - Rollback: imagen `codex-dashboard:before-chat-handoff-20261017`; copia de los
   archivos tocados y del parche en
   `/srv/platform/backups/codex-dashboard-before-chat-handoff-20261017/`.
@@ -355,6 +382,38 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Crear proyecto desde repo Git y repo en GitHub
+
+- `bin/cm-repo.py` (host, vía tmux `cmj-repo-*`, petición/resultado en
+  `/config/repo-ops/<id>/`, borrado al terminar): `check` (ls-remote, rama
+  principal y ramas), `clone` (solo al temporal vacío `.nombre-creating-*`),
+  `push` (rama actual a origin). URLs https/ssh, `GIT_TERMINAL_PROMPT=0`,
+  `GIT_ALLOW_PROTOCOL=https:ssh`, BatchMode, sin hooks; mensajes de error en español.
+  umask 022 para que Docker pueda leer el código clonado (se detectó 0600 y se corrigió).
+- `cm/repos.py`: normaliza (GitHub https/`usuario/repo` → SSH; rechaza file://,
+  rutas, opciones, ext::, credenciales en URL, http), `check`/`clone`/`push`,
+  token GitHub cifrado con Fernet derivado de `.cm-secret` (`/config/github.json`,
+  0600), `/user` para validar y `POST /user/repos` privado.
+- `cm/projects.py`: `name_problem`, `_commit_scaffold`, `import_project` (todo o
+  nada; repo vacío → scaffold), `import_prompt`, `publish_github` (crear + origin +
+  push; un fallo no impide el proyecto). `app.py`: create con `repo_url`/`repo_branch`
+  o `github`; `POST /api/projects/repo-check`; `GET|POST /api/github` (auditado).
+- UI: `Create.jsx` selector de origen, validación con estado, rama, nombre sugerido
+  desde el repo, pasos numerados sin huecos, sin «Tecnología»/«Publicar» al importar
+  código; `Settings.jsx` sección GitHub (conectar/desconectar).
+- Pruebas `tests/test_repos.py` (11): normalización y rechazos, helper (refs,
+  errores, rutas seguras, clonado local), host_op ida/vuelta y proceso muerto,
+  importar con ramas/vacío/fallos sin residuos, token cifrado + creación + 422,
+  HTTP auth/Origin/import sin despliegue/GitHub. 150 Python + 5 Node OK.
+- Real (solo lectura salvo el temporal): desde el contenedor desplegado validó
+  `raulisai/cuidemonos` privado por SSH (master, produccion) en 1,6 s y el error de
+  un repo inexistente; importó `octocat/Hello-World` como `cm-import-check-20261017`
+  (ramas remotas, origin SSH, permisos 644/750) y se borró. Sin residuos en repo-ops.
+- `tools/verify_repo_create_browser.cjs`: **REPO_CREATE_BROWSER_OK** (360/390/1440,
+  API simulada); capturas en `artifacts/repo-create-20261017/`. Desplegado con
+  `docker compose up -d --build` desde el proyecto: healthy, `/`, `/new`,
+  `/settings`, `/health` 200; `/api/github` y repo-check sin sesión 401; Origin ajeno 403.
 
 ### Versionador Git (commit por acción, ramas y rollback)
 

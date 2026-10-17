@@ -13,7 +13,7 @@ LOG.setLevel(logging.INFO)
 LOG.propagate = False
 if not LOG.handlers:
     LOG.addHandler(logging.StreamHandler())
-EVENT_PATHS = {'/api/login', '/api/login/mfa', '/api/logout', '/api/security/setup',
+EVENT_PATHS = {'/api/login', '/api/login/mfa', '/api/logout', '/api/security/setup', '/api/github',
                '/api/security/confirm', '/api/security/recovery', '/api/security/revoke'}
 
 

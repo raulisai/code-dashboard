@@ -701,3 +701,15 @@ i.plus { color: var(--ok); font-style: normal; } i.minus { color: #ff9d96; font-
 .run-version { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: .78rem; color: var(--muted); }
 .run-version code { font-size: .72rem; }
 @media (min-width: 700px) { .ver-buttons { grid-template-columns: 1fr 1fr; } .ver-actions .btn { flex: 1; } }
+/* Crear desde un repositorio Git y opción de repo en GitHub */
+.source-picker { display: flex; width: 100%; margin-top: 12px; }
+.source-picker button { flex: 1; justify-content: center; padding: 10px 8px; }
+.repo-field input { font-size: 15px; }
+.create-step > small.repo-status { display: flex; }
+.repo-status.ok { color: var(--ok, #3fb950); }
+.repo-ok { display: grid; gap: 6px; margin-top: 8px; }
+.repo-ok small { display: flex; align-items: center; gap: 5px; font-size: .82rem; }
+.repo-branch { margin: 2px 0 0; }
+.toggle.disabled { opacity: .62; cursor: default; }
+.toggle-note { display: block; font-size: .78rem; margin-top: 2px; line-height: 1.35; }
+.toggle-note a { color: var(--accent-hover); }

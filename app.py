@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from aiohttp import web, WSMsgType
 
-from cm import auth, chats, config, dockerapi, files, gitops, lifecycle, projects, push, runs, speech, tasks, tmux, websecurity, terminal as terminalio
+from cm import auth, chats, config, dockerapi, files, gitops, lifecycle, projects, push, repos, runs, speech, tasks, tmux, websecurity, terminal as terminalio
 
 EXECUTOR = ThreadPoolExecutor(max_workers=16, thread_name_prefix='cm-io')
 PUBLIC_API = {'/api/login', '/api/login/mfa', '/api/logout'}
@@ -357,9 +357,25 @@ async def projects_post(request):
         stack = str(data.get('stack') or 'auto')
         provider = str(data.get('provider') or runs.load_settings()['default_provider'])
         if provider not in config.PROVIDERS: return fail('Agente inválido')
-        ok, message = await blocking(projects.create_project, name, description, stack)
-        if not ok: return fail(message)
-        notes = [message]
+        repo_url = str(data.get('repo_url') or '').strip()
+        if repo_url:
+            branch = str(data.get('repo_branch') or '').strip()
+            ok, message, info = await blocking(projects.import_project, name, repo_url, branch, description)
+            if not ok: return fail(message)
+            notes = [message]
+            if not info['empty']:
+                # Un repo con código no se despliega a ciegas (puertos, nombres de router): lo adapta el agente.
+                if data.get('build', True):
+                    await blocking(add_task, name, provider, f'Adaptar y publicar el repo importado {info["repo"]}'[:200],
+                                   projects.import_prompt(name, info['url'], info['branch'], description), 'alta', 'create')
+                    notes.append(f'{runs.label(provider)} lo está adaptando para publicarlo')
+                return reply({'message': ' · '.join(notes), 'project': name, 'repo': info}, 201)
+        else:
+            ok, message = await blocking(projects.create_project, name, description, stack)
+            if not ok: return fail(message)
+            notes = [message]
+            if data.get('github'):
+                notes.append((await blocking(projects.publish_github, name, description))[1])
         if data.get('deploy', True):
             deployed, deploy_message, _ = await blocking(runs.start_job, name, 'deploy')
             notes.append('Desplegando la primera versión…' if deployed else deploy_message)
@@ -371,6 +387,25 @@ async def projects_post(request):
     if action == 'toggle_featured':
         return reply({'message': await blocking(projects.toggle_featured, name)})
     return fail('Acción inválida')
+
+
+async def repo_check(request):
+    data = await body(request)
+    try: return reply(await blocking(repos.check, data.get('url')))
+    except repos.RepoError as error: return fail(str(error), 422)
+
+
+async def github_get(request):
+    return reply(await blocking(repos.github_status))
+
+
+async def github_post(request):
+    data = await body(request)
+    try:
+        if data.get('action') == 'disconnect': return reply({**await blocking(repos.github_disconnect), 'message': 'GitHub desconectado'})
+        status = await blocking(repos.github_connect, data.get('token'))
+        return reply({**status, 'message': f'GitHub conectado como {status["login"]}'})
+    except repos.RepoError as error: return fail(str(error), 422)
 
 
 async def project_delete_preview(request):
@@ -675,6 +710,7 @@ def make_app():
         web.post('/api/approvals', approval_post), web.post('/api/rules', rules_post),
         web.post('/api/tasks', tasks_post), web.post('/api/projects', projects_post),
         web.get('/api/projects/delete-preview', project_delete_preview), web.get('/api/projects/trash', project_trash),
+        web.post('/api/projects/repo-check', repo_check), web.get('/api/github', github_get), web.post('/api/github', github_post),
         web.post('/api/docker', docker_post), web.get('/api/logs', logs_get),
         web.get('/api/jobs', jobs_get), web.get(r'/api/jobs/{job_id}', job_get), web.post('/api/jobs', jobs_post),
         web.get('/api/files/list', files_list), web.get('/api/files/read', files_read), web.get('/api/files/raw', files_raw),
