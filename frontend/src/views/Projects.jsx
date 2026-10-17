@@ -1,9 +1,9 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {ArrowLeft, ArrowRight, Bot, Check, ChevronLeft, ChevronRight, Circle, CircleAlert, Container, ExternalLink, FolderOpen, FolderPlus, GitBranch, Globe2, ListTodo, MoreHorizontal, Search, Settings, ShieldQuestion, Sparkles, SquareTerminal, Star, Trash2, X} from 'lucide-react';
 import ProjectDelete from '../ProjectDelete.jsx';
 import {useApp} from '../App.jsx';
 import {navigate, post, providerLabel, taskLabel, timeAgo} from '../lib.js';
-import {Empty, Monogram, Sheet, Spinner, toast} from '../ui.jsx';
+import {Empty, Sheet, Spinner, toast} from '../ui.jsx';
 
 const ART = {
   server: {image: '/art/server-neon.webp', color: '#20c7ff', label: 'Infraestructura'},
@@ -38,13 +38,18 @@ export default function Projects() {
   });
   const [menu, setMenu] = useState(false);
   const {deleting, setDeleting, toggleStar} = useProjectActions();
-  const touch = useRef(null);
   const index = Math.max(0, projects.findIndex(p => p.name === selected));
   const project = projects[index];
   useEffect(() => { if (project) { try { localStorage.setItem('cm-overview-project', project.name); } catch {} } }, [project?.name]);
   const move = direction => { if (projects.length > 1) setSelected(projects[(index + direction + projects.length) % projects.length].name); };
   const tasks = state.task_records.filter(t => t.project === project?.name).slice().reverse()
     .sort((a, b) => Number(['working', 'espera'].includes(b.status)) - Number(['working', 'espera'].includes(a.status))).slice(0, 3);
+  const projectTasks = state.task_records.filter(task => task.project === project?.name);
+  const working = projectTasks.filter(task => task.status === 'working').length;
+  const queued = projectTasks.filter(task => task.status === 'espera').length;
+  const services = project?.container_details || [];
+  const running = project?.running_containers || 0;
+  const deployment = project?.deleting ? 'Eliminando' : !services.length ? 'Sin desplegar' : !running ? 'Detenida' : running < services.length ? 'Parcialmente activa' : 'En línea';
   const approvals = state.approvals || [];
   const art = project ? projectArt(project) : ART.server;
   return <div className="home neon-home projects-page projects-carousel" style={{'--project-glow': art.color}}>
@@ -59,37 +64,37 @@ export default function Projects() {
       <ShieldQuestion size={20}/><div><b>{approvals.length} {approvals.length === 1 ? 'acción espera' : 'acciones esperan'} tu aprobación</b><small>{approvals[0].project} · {providerLabel(approvals[0].provider)}</small></div><ChevronRight size={18}/>
     </a>}
     {project ? <>
-      <section className="project-overview" aria-label="Resumen del proyecto">
+      <div className="project-switcher">
+        <label htmlFor="selected-project">Aplicación</label>
+        <div><button className="glass-circle carousel-prev" aria-label="Proyecto anterior" disabled={projects.length < 2} onClick={() => move(-1)}><ChevronLeft size={20}/></button>
+        <select id="selected-project" className="select" value={project.name} onChange={e => setSelected(e.target.value)}>{projects.map(p => <option key={p.name} value={p.name}>{p.name}{p.working?.length ? ' · Trabajando' : p.running_containers ? ' · En línea' : ''}</option>)}</select>
+        <button className="glass-circle carousel-next" aria-label="Proyecto siguiente" disabled={projects.length < 2} onClick={() => move(1)}><ChevronRight size={20}/></button></div>
+      </div>
+      <section className="project-overview glass-panel" aria-label="Resumen del proyecto">
         <div className="project-identity" key={project.name}>
-          <Monogram name={project.name} size={42}/>
+          <img className="project-thumbnail" src={art.image} alt="" width="64" height="64"/>
+          <span className="eyebrow">{art.label}</span>
           <h2>{project.name}{project.featured && <Star size={14} fill="currentColor" className="star-on"/>}</h2>
           <p>{project.description || project.url.replace('https://', '')}</p>
-          <div className="project-online"><span className={project.running_containers ? 'online-indicator' : 'online-indicator stopped'}/><span className={project.running_containers ? 'online-text' : ''}>{project.running_containers ? 'En línea' : 'Sin desplegar'}</span><i/> <span>{project.running_containers}/{project.container_details.length} servicios</span></div>
+          <div className="project-online"><span className={project.running_containers ? 'online-indicator' : 'online-indicator stopped'}/><span className={project.running_containers ? 'online-text' : ''}>{deployment}</span><i/> <span>{running}/{services.length} servicios</span></div>
         </div>
-        <div className="project-visual" onTouchStart={e => { touch.current = {x: e.touches[0].clientX, y: e.touches[0].clientY}; }} onTouchEnd={e => {
-          if (!touch.current) return;
-          const dx = e.changedTouches[0].clientX - touch.current.x, dy = e.changedTouches[0].clientY - touch.current.y;
-          if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) move(dx > 0 ? -1 : 1);
-          touch.current = null;
-        }}>
-          <a className="project-art-link" href={`/p/${project.name}`} onClick={e => go(e, `/p/${project.name}`)} aria-label={`Abrir proyecto ${project.name}`}>
-            <img key={art.image} className="project-art" src={art.image} alt="" fetchPriority="high" draggable="false"/>
-          </a>
-          {projects.length > 1 && <><button className="glass-circle carousel-prev" aria-label="Proyecto anterior" onClick={() => move(-1)}><ChevronLeft size={23}/></button><button className="glass-circle carousel-next" aria-label="Proyecto siguiente" onClick={() => move(1)}><ChevronRight size={23}/></button></>}
-          <div className="visual-caption"><span>{art.label}</span><a href={`/p/${project.name}`} onClick={e => go(e, `/p/${project.name}`)}>Abrir proyecto <ArrowRight size={13}/></a></div>
+        <div className="project-status-grid" aria-label="Estado de la aplicación">
+          <a href={`/p/${project.name}?tab=deploy`} onClick={e => go(e, `/p/${project.name}?tab=deploy`)}><Container size={17}/><b>{running}/{services.length}</b><span>Servicios activos</span></a>
+          <a href={`/p/${project.name}?tab=agent`} onClick={e => go(e, `/p/${project.name}?tab=agent`)}><Bot size={17}/><b>{working}</b><span>Trabajando</span></a>
+          <a href={`/queue?project=${project.name}`} onClick={e => go(e, `/queue?project=${project.name}`)}><ListTodo size={17}/><b>{queued}</b><span>En cola</span></a>
         </div>
-        <div className="carousel-pagination" aria-label="Elegir proyecto">
-          {projects.map((p, i) => <button key={p.name} className={i === index ? 'on' : ''} aria-label={`Ver ${p.name}`} aria-current={i === index ? 'true' : undefined} title={p.name} onClick={() => setSelected(p.name)}><span/></button>)}
-        </div>
+        <a className="project-open-web btn" href={project.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={16}/>Abrir aplicación<span>{project.url.replace('https://', '')}</span></a>
         <span className="sr-only" role="status" aria-live="polite">{project.name}, proyecto {index + 1} de {projects.length}</span>
       </section>
       <div className="overview-details">
         <nav className="project-tool-dock glass-panel" aria-label="Herramientas del proyecto">
-          <a href={`/p/${project.name}?tab=agent`} onClick={e => go(e, `/p/${project.name}?tab=agent`)} aria-label="Agente" title="Agente"><span className="tool-tile agent-tile"><Bot size={24}/></span><small>Agente</small></a>
-          <a href={`/p/${project.name}?tab=files`} onClick={e => go(e, `/p/${project.name}?tab=files`)} aria-label="Archivos" title="Archivos"><span className="tool-tile files-tile"><FolderOpen size={23}/></span><small>Archivos</small></a>
-          <a href={`/p/${project.name}?tab=shell`} onClick={e => go(e, `/p/${project.name}?tab=shell`)} aria-label="Terminal" title="Terminal"><span className="tool-tile terminal-tile"><SquareTerminal size={23}/></span><small>Terminal</small></a>
-          <a href={`/p/${project.name}?tab=deploy`} onClick={e => go(e, `/p/${project.name}?tab=deploy`)} aria-label="Servicios" title={`${project.container_details.length} servicios`}><span className="tool-tile docker-tile"><Container size={24}/></span><small>Servicios</small></a>
-          <button onClick={() => setMenu(true)} aria-label="Más herramientas" title="Más herramientas"><span className="tool-tile more-tile">+3</span><small>Más</small></button>
+          {[
+            ['agent', 'Agente', 'Pedir cambios', Bot], ['preview', 'Vista previa', 'Ver la aplicación', Globe2],
+            ['files', 'Archivos', 'Explorar y editar', FolderOpen], ['deploy', 'Servicios', 'Estado y despliegue', Container],
+            ['console', 'Logs', 'Revisar errores', ListTodo], ['git', 'Versiones', 'Historial y restauración', GitBranch],
+            ['shell', 'Terminal', 'Consola del proyecto', SquareTerminal],
+          ].map(([tab, label, hint, Icon]) => <a key={tab} href={`/p/${project.name}?tab=${tab}`} onClick={e => go(e, `/p/${project.name}?tab=${tab}`)} aria-label={label}><span className="tool-tile"><Icon size={20}/></span><span><b>{label}</b><small>{hint}</small></span></a>)}
+          <button onClick={() => setMenu(true)} aria-label="Más herramientas"><span className="tool-tile"><MoreHorizontal size={20}/></span><span><b>Más</b><small>Opciones del proyecto</small></span></button>
         </nav>
         <section className="overview-tasks glass-panel">
           <header><h2>Actividad reciente</h2><a href={`/queue?project=${project.name}`} onClick={e => go(e, `/queue?project=${project.name}`)} aria-label="Ver todas las peticiones"><ListTodo size={16}/></a></header>

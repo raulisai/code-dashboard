@@ -42,6 +42,8 @@ export default function Workspace({name}) {
   const toggleSide = () => { const next = !side; setSide(next); try { localStorage.setItem('cm-side-preview', next ? '1' : '0'); } catch { /* sin almacenamiento */ } };
   const run = async () => { if (await deploy('deploy') && !desktop) open('deploy'); };
   const working = project.working[0];
+  const serviceCount = project.container_details?.length || 0;
+  const deployment = !serviceCount ? 'Sin desplegar' : !project.running_containers ? 'Detenida' : project.running_containers < serviceCount ? 'Parcialmente activa' : 'En línea';
   const showSide = desktop && side && tab !== 'preview';
   const panel = key => {
     const active = tab === key;
@@ -60,7 +62,7 @@ export default function Workspace({name}) {
       <button className="icon-btn" onClick={() => navigate('/')} aria-label="Volver al inicio"><ArrowLeft size={20}/></button>
       <Monogram name={name} size={28}/>
       <div className="ws-title"><b>{name}</b>
-        <small>{working ? <><span className="pulse-dot"/>{providerLabel(working.provider)} trabajando</> : project.queued ? `${project.queued} en cola` : project.running_containers ? <><span className="dot on"/>En línea</> : 'Sin desplegar'}</small></div>
+        <small>{working ? <><span className="pulse-dot"/>{providerLabel(working.provider)} trabajando</> : project.queued ? `${project.queued} en cola` : <><span className={project.running_containers ? 'dot on' : 'dot'}/>{deployment}</>}</small></div>
       <span className="grow"/>
       <a className="icon-btn" href={project.url} target="_blank" rel="noreferrer" aria-label="Abrir la web"><ExternalLink size={18}/></a>
       {desktop && !project.protected && <button className="icon-btn danger" onClick={() => setDeleting(true)} aria-label="Eliminar proyecto" title="Eliminar proyecto"><Trash2 size={17}/></button>}

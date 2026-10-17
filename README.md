@@ -52,18 +52,20 @@ se guardan en SQLite y sobreviven a los reinicios.
 peticiones en curso y en cola, consumo de CPU/RAM/disco, contenedores y solicitudes
 de aprobación. Las tareas activas indican el proyecto y el agente que trabaja.
 
-**Proyectos** muestra un proyecto a la vez con su ilustración y toda su información:
-servicios, herramientas y actividad reciente. Cambia con las flechas, deslizando
-la ilustración o tocando los puntos. Usa el buscador para filtrar por nombre o
-descripción y **Nuevo proyecto** para abrir la creación. **Más** permite abrir
-vista previa, Git, consola, destacados y eliminación.
+**Proyectos** prioriza el estado de la aplicación y sus herramientas. La ilustración
+es una miniatura de 64 px. Muestra servicios activos, peticiones trabajando y cola;
+distingue En línea, Parcialmente activa, Detenida y Sin desplegar (estado de
+contenedores, no una prueba HTTP de disponibilidad). Cambia de aplicación con el
+selector o las flechas y filtra por nombre o descripción. Agente, vista previa,
+archivos, servicios, logs, versiones y terminal tienen accesos directos con una
+breve explicación. **Más** conserva destacados y eliminación. **Nuevo proyecto**
+abre la creación. En móvil se apila la información; en pantallas amplias, estado y
+herramientas se muestran en dos columnas.
 
-La barra flotante del celular tiene **Inicio · Proyectos · Crear (esfera) · Cola ·
-Servidor**.
-**Ajustes** se abre desde el menú superior; en escritorio también está en la barra
-lateral. La esfera abre el formulario existente: el futuro modo de creación/agente
-se desarrollará después. Las ilustraciones de esta versión también se guardan
-en la caché de la PWA al visitarlas.
+La barra flotante del celular tiene **Inicio · Proyectos · Agente (esfera) · Cola ·
+Servidor**. **Ajustes** se abre desde el menú superior; en escritorio también está
+en la barra lateral. La esfera abre el agente general. Las miniaturas también se
+guardan en la caché de la PWA al visitarlas.
 
 En **Crear**, describe una idea,
 elige tecnología y agente y crea el proyecto. Se genera un repositorio con su
