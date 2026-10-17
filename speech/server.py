@@ -56,7 +56,7 @@ def transcribe(data, language, prompt, fast=False):
 
 
 async def health(request):
-    return web.json_response({'ready': READY, 'engine': 'whisper-tiny-local' if quick else 'whisper-small-local'}, status=200 if READY else 503)
+    return web.json_response({'ready': READY, 'engine': 'whisper-small-local', 'fast_engine': 'whisper-tiny-local'}, status=200 if READY else 503)
 
 
 async def recognize(request):

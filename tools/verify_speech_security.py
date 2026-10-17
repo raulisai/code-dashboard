@@ -2,6 +2,8 @@
 No ejecuta inferencia ni usa grabaciones del usuario.
 """
 import io
+import asyncio
+import json
 import math
 import sys
 import threading
@@ -20,6 +22,9 @@ class Model:
         assert len(audio) >= 12000
         return iter([SimpleNamespace(text='Audio de prueba', no_speech_prob=.1, avg_logprob=-.1)]), SimpleNamespace(language='es')
 server.MODEL = Model()
+server.READY = True
+health = asyncio.run(server.health(None))
+assert health.status == 200 and json.loads(health.text)['fast_engine'] == 'whisper-tiny-local'
 rate=48000
 samples=(np.sin(np.arange(rate)*2*math.pi*440/rate)*0.1).astype(np.float32)
 wav=io.BytesIO()
