@@ -588,7 +588,14 @@ no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyec
   selector, flechas, estados y acceso a archivos comprobados. Comprobación final
   sobre despliegue en `tools/verify_responsive_browser.cjs` incluye 14 vistas
   (también vista previa y terminal con WebSocket simulado) y estado sin proyectos.
-- Evidencias: `artifacts/responsive-20261018/` y subcarpeta `published/`.
+- Verificación final publicada: **14 vistas × 7 tamaños OK** (320/360/390/600/
+  768/1024/1440), sin errores JS ni desbordamiento horizontal. También búsqueda,
+  selector/flechas, estado parcial y vacío, acceso a archivos y terminal simulada.
+  Ejecuciones finales completas: 320 px y el resto de tamaños, tras estabilizar
+  reconstrucciones concurrentes que interrumpieron intentos anteriores.
+- Nombres largos de contenedores e imágenes se envuelven; títulos de peticiones
+  admiten dos líneas. No se descartan cambios de los otros chats del proyecto.
+- Evidencias: `artifacts/responsive-20261018/`, `published/` y `final/`.
 - Publicado con `docker compose up -d --build`; `/projects` HTTPS 200, `/health`
   ok, dashboard y speech healthy. No se modificó autenticación ni datos de apps.
 
