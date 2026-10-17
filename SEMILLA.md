@@ -4,9 +4,13 @@
 
 Última actualización anterior: 2026-10-18, 00:05 Europe/Berlin. Autor: Codex (agente general: voz, partículas, continuidad y presentaciones).
 
-Última actualización: 2026-10-18 Europe/Berlin. Codex: barra compacta Glass y accesibilidad.
+Última actualización: 2026-10-18, 00:09 Europe/Berlin. Autor: Codex (validación final del agente general).
 
 ## 0. Estado en una línea
+
+**Input del chat corregido (18 octubre, Codex):** la altura se recalcula con el
+texto y al activar la vista; vuelve a una línea después de enviar o borrar, y
+se adapta también al dictado y borradores. Publicado con Compose; HTTPS 200.
 
 **IU móvil refinada y publicada:** barra inferior de 81 a 60 px (≈25 % menos),
 iconos de 18 px, esfera elevada, cristal transparente con desenfoque y selección
@@ -14,7 +18,7 @@ visible. Objetivos táctiles ≥44 px, acceso de teclado al contenido, estado de
 navegación accesible y respeto de movimiento/transparencia reducidos.
 
 
-**Agente general ampliado:** esfera de puntos 3D compartida con navegación,
+**Agente general ampliado, publicado y verificado:** esfera de puntos 3D compartida con navegación,
 voz rápida con texto provisional cuando el navegador lo admite, turnos automáticos
 hablar/responder/escuchar y respaldo local rápido/preciso. Ya no espera tres
 segundos para enviar. Enrutamiento automático entre Claude/Codex ante límites,
@@ -216,6 +220,12 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Input del chat (18 octubre)
+
+- Pendiente valoración en el celular físico del usuario.
+- Pruebas de navegador con API simulada, sin enviar tareas reales a agentes.
+- Respaldo previo: `/srv/platform/backups/codex-dashboard-auto/20261017T220749.098076Z/`.
 
 ### Barra compacta Glass (18 octubre)
 
@@ -524,6 +534,17 @@ no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyec
 
 ## 5. Implementación y verificaciones completadas
 
+### Input del chat: restaurar tamaño al enviar (18 octubre, Codex)
+
+- `Agent.jsx`: sustituido cálculo exclusivo en onInput por useLayoutEffect
+  dependiente de texto/visibilidad y ref del textarea. Cubre escritura, borrado,
+  dictado, envío y recuperación de borradores. Mantiene límite de 220 px.
+- `verify_chats_browser.cjs`: comprueba crecimiento, límite y reducción al borrar
+  y después de enviar un borrador largo recuperado desde otro chat.
+- 14 tests frontend y build Vite OK. Reconstruido con
+  `docker compose up -d --build`; Inicio y /health HTTPS 200; servicios healthy.
+
+
 ### Barra compacta Glass y ergonomía (18 octubre)
 
 - `neon.css`: altura 60 px, iconos 18 px, esfera 64 px elevada 15 px por encima
@@ -566,6 +587,20 @@ no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyec
   sin alertas. Prueba local General a 360/390/1440; prueba de voz nativa/turnos,
   fallback local, UI, HTML hostil sin scripts/red/acceso al padre y agotamiento doble
   aprobada también contra HTTPS público. No se gastaron turnos de agentes.
+- Validación final: GENERAL_BROWSER_OK a 360/390/1440 sobre URL pública y
+  GENERAL_LIVE_OK (texto provisional, envío rápido, TTS y reescucha, fallback a
+  local, cuatro tipos de presentación, Escape, HTML sin scripts/red/padre y error
+  claro cuando ambos proveedores fallan). Directorio: artifacts/general-release-20261018.
+- SPEECH_SECURITY_OK: WAV/WebM/MP4 reales, listas remotas rechazadas, elección
+  tiny/small por duración, rechazo de repetición y prueba del healthcheck de voz.
+  Se corrigió una referencia incorrecta del healthcheck introducida en la revisión.
+- Publicado con docker compose up -d --build --wait --wait-timeout 120. Backend
+  y speech actuales coinciden por SHA256 con los archivos verificados. Ambos
+  healthy; /agent y /health HTTPS 200, API anónima 401, health interno de voz ready
+  y fast_engine tiny correctos. Se retiró solo el preview local creado por esta sesión.
+- Otros agentes empezaron tareas en paralelo y el versionador guardó snapshots
+  durante el trabajo. Se preservaron sus cambios en Agent.jsx/verify_chats_browser;
+  no detener sus previews ni sus procesos y no sobrescribir sus modificaciones.
 
 ### Panel de modelos y esfuerzo junto al mensaje
 
