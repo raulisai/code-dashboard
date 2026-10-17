@@ -215,7 +215,7 @@ async def agent_get(request):
     if request.query.get('rev') == rev: return reply({'same': True, 'rev': rev})
     def build():
         task_rows = [t for t in tasks.task_records() if t['project'] == project and t.get('chat_id', 'main') == chat_id]
-        return {'rev': rev, 'runs': runs.conversation(project, chat_id=chat_id), 'queue': [t for t in task_rows if t['status'] == 'espera'],
+        return {'rev': rev, 'runs': runs.conversation(project, full_runs=1 if project == config.GENERAL else 6, chat_id=chat_id), 'queue': [t for t in task_rows if t['status'] == 'espera'],
                 'working': [t for t in task_rows if t['status'] == 'working'],
                 'sessions': {k: v.get('id') for k, v in runs.chat_sessions(project, chat_id).items()},
                 'rules': runs.approval_rules(project), 'settings': runs.load_settings()}
@@ -244,6 +244,9 @@ async def agent_send(request):
     if not isinstance(effort, str) or (effort and effort not in modelcatalog.supported_efforts(provider, model)):
         return fail('Esfuerzo no compatible con el modelo seleccionado')
     if project == config.GENERAL and effort: return fail('El agente general usa el esfuerzo predeterminado')
+    if project == config.GENERAL:
+        from cm import availability
+        provider = availability.choose(provider) or provider
     priority = data.get('priority') if data.get('priority') in PRIORITIES else 'media'
     title = text.splitlines()[0][:200]
     try: task = await blocking(add_task, project, provider, title, text, priority, 'chat', data.get('chat_id', 'main'), model, effort)
@@ -330,7 +333,7 @@ def task_action(data):
             return (200 if ok else 409), message
         if action in ('retry', 'status') and (action == 'retry' or data.get('status') == 'espera'):
             if task['status'] == 'working': return 409, 'La petición está en ejecución'
-            task.update({'status': 'espera', 'started_at': '', 'finished_at': '', 'result': '', 'run_id': ''})
+            task.update({'providers_tried': '', 'status': 'espera', 'started_at': '', 'finished_at': '', 'result': '', 'run_id': ''})
             tasks.save_tasks(records); runs.WAKE.set()
             return 200, 'Petición devuelta a la cola'
         if action == 'status':

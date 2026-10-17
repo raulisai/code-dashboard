@@ -30,7 +30,7 @@ export function insertDictation(current, dictated) {
 }
 
 export async function transcribeAudio(blob, settings, signal) {
-  const query = new URLSearchParams({language: settings.language, vocabulary: settings.vocabulary || ''});
+  const query = new URLSearchParams({language: settings.language, vocabulary: settings.vocabulary || '', fast: settings.fast ? '1' : '0'});
   const response = await fetch(`/api/voice/transcribe?${query}`, {method: 'POST', credentials: 'same-origin',
     headers: {'Content-Type': blob.type || 'audio/webm'}, body: blob, signal});
   const result = await response.json().catch(() => ({}));

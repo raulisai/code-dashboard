@@ -24,7 +24,7 @@ async def recognize(request):
     if language not in ('es', 'en', 'pt', 'fr', 'de', 'it', 'auto'):
         return web.json_response({'message': 'Idioma no admitido'}, status=400)
     vocabulary = ' '.join(request.query.get('vocabulary', '').split())[:600]
-    params = {'language': language, 'prompt': 'Codex, Claude, Docker, Git, React, TypeScript, API, despliegue, proyecto. ' + vocabulary}
+    params = {'fast': '1' if request.query.get('fast') == '1' else '0', 'language': language, 'prompt': 'Codex, Claude, Docker, Git, React, TypeScript, API, despliegue, proyecto. ' + vocabulary}
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=300, connect=5)) as session:
             async with session.post(SPEECH_URL + '/transcribe', params=params, data=data, headers={'Content-Type': request.content_type}) as response:

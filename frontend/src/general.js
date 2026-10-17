@@ -98,6 +98,7 @@ export function headline(run, queued = 0) {
     }
     return {title: events.at(-1)?.t === 'text' ? 'Respondiendo' : 'Pensando', subtitle: latestText};
   }
+  if (run.status === 'error' && String(run.providers_tried || '').includes(',')) return {title:'Ahora no hay conexión disponible', subtitle:'Probé las dos conexiones. Puedes reintentar cuando se restablezcan.'};
   if (run.status === 'error') return {title: 'No se completó', subtitle: clip(run.error || run.result?.text || 'El agente terminó con un error', 140)};
   if (run.status === 'stopped') return {title: 'Detenido', subtitle: 'Puedes pedirme otra cosa'};
   return null;

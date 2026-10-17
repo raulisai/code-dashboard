@@ -40,7 +40,7 @@ async def prepare(request, response):
            "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
            "font-src 'self' data:; media-src 'self' blob:; "
            f"connect-src 'self' wss://{host}; worker-src 'self' blob:; "
-           "frame-src https:; object-src 'none'; base-uri 'none'; "
+           "frame-src 'self' https:; object-src 'none'; base-uri 'none'; "
            "form-action 'self'; frame-ancestors 'none'")
     for name, value in {
         'Content-Security-Policy': csp,

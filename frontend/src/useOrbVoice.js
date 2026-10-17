@@ -1,12 +1,14 @@
 import {useEffect, useRef, useState} from 'react';
 import {formatDictation, microphoneError, recordingType, transcribeAudio, voiceSettings} from './voice.js';
 
-const MAX_SECONDS = 120, SILENCE_SECONDS = 1.8;
+const MAX_SECONDS = 120, SILENCE_SECONDS = .7;
 
 /** Conversación con la esfera: tocar para hablar; termina al tocar de nuevo o tras una pausa
  * y entrega el texto transcrito por el Whisper local. El nivel del micrófono anima la esfera. */
-export default function useOrbVoice(onText) {
+export default function useOrbVoice(onText, {engine: preferred = 'auto'} = {}) {
   const [phase, setPhase] = useState('idle'), [level, setLevel] = useState(0), [error, setError] = useState(''), [elapsed, setElapsed] = useState(0);
+  const native = useRef(null);
+  const [interim, setInterim] = useState(''), [engine, setEngine] = useState('local');
   const capture = useRef(null), ticket = useRef(0), alive = useRef(true), controller = useRef(null), deliver = useRef(onText);
   deliver.current = onText;
   useEffect(() => { alive.current = true; return () => { alive.current = false; cancel(); }; }, []);
@@ -23,15 +25,17 @@ export default function useOrbVoice(onText) {
   };
   const cancel = () => {
     ticket.current++;
+    if (native.current) { const current = native.current; native.current = null; clearInterval(current.timer); clearTimeout(current.timeout); current.recognition.abort(); }
     controller.current?.abort(); controller.current = null;
     const current = capture.current;
     if (current) { current.cancelled = true; if (current.recorder.state !== 'inactive') current.recorder.stop(); }
     release();
     if (alive.current) { setPhase('idle'); setElapsed(0); }
   };
-  const stop = () => { const current = capture.current; if (current && current.recorder.state === 'recording') { setPhase('transcribing'); current.recorder.stop(); } };
+  const stop = () => { if (native.current) { setPhase('transcribing'); native.current.recognition.stop(); return; } const current = capture.current; if (current && current.recorder.state === 'recording') { setPhase('transcribing'); current.recorder.stop(); } };
 
-  const start = async () => {
+  const startLocal = async () => {
+    setEngine('local'); setInterim('');
     if (capture.current || phase === 'opening' || phase === 'transcribing') return;
     const identity = ++ticket.current;
     setError(''); setElapsed(0); setPhase('opening');
@@ -63,7 +67,7 @@ export default function useOrbVoice(onText) {
           const abort = new AbortController(); controller.current = abort;
           const timeout = setTimeout(() => abort.abort(), 305000);
           let result;
-          try { result = await transcribeAudio(blob, voiceSettings(), abort.signal); }
+          try { result = await transcribeAudio(blob, {...voiceSettings(), fast: preferred !== 'local-precise'}, abort.signal); }
           finally { clearTimeout(timeout); if (controller.current === abort) controller.current = null; }
           if (!alive.current || identity !== ticket.current) return;
           const text = formatDictation(result.text || '');
@@ -94,5 +98,45 @@ export default function useOrbVoice(onText) {
     }
   };
 
-  return {phase, level, error, elapsed, start, stop, cancel, clearError: () => setError('')};
+  const start = () => {
+    if (capture.current || native.current || phase === 'opening' || phase === 'transcribing') return;
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (preferred !== 'auto' || !Recognition) return startLocal();
+    const identity = ++ticket.current, recognition = new Recognition();
+    const current = {recognition, text: '', failed: false, since: Date.now()}; native.current = current;
+    setEngine('browser'); setInterim(''); setError(''); setElapsed(0); setPhase('opening');
+    recognition.lang = ({en:'en-US',es:'es-MX',pt:'pt-BR',fr:'fr-FR',de:'de-DE',it:'it-IT'})[voiceSettings().language] || navigator.language || 'es-MX';
+    recognition.interimResults = true; recognition.continuous = false; recognition.maxAlternatives = 1;
+    const active = () => alive.current && ticket.current === identity && native.current === current;
+    const fallbackLocal = () => { if (!active()) return; native.current = null; clearInterval(current.timer); clearTimeout(current.timeout); recognition.onend = null; try { recognition.abort(); } catch {} startLocal(); };
+    recognition.onstart = () => {
+      if (!active()) return;
+      clearTimeout(current.timeout); setPhase('listening');
+      current.timer = setInterval(() => { if (active()) { setElapsed((Date.now() - current.since) / 1000); if (Date.now() - current.since > MAX_SECONDS * 1000) stop(); } }, 150);
+      current.timeout = setTimeout(() => { if (active()) recognition.stop(); }, 15000);
+    };
+    recognition.onspeechstart = () => { if (active()) { clearTimeout(current.timeout); setLevel(.45); } };
+    recognition.onspeechend = () => { if (active()) setLevel(0); };
+    recognition.onresult = event => {
+      if (!active()) return;
+      current.text = Array.from(event.results).map(result => result[0]?.transcript || '').join(' ').trim();
+      setInterim(current.text);
+    };
+    recognition.onerror = event => {
+      if (!active()) return;
+      if (['network', 'service-not-allowed', 'language-not-supported', 'audio-capture', 'not-allowed'].includes(event.error)) { fallbackLocal(); return; }
+      if (!current.failed && event.error !== 'aborted') setError(event.error === 'no-speech' ? 'No te escuché. Toca la esfera para volver a hablar.' : microphoneError({name:'NotAllowedError'}));
+    };
+    recognition.onend = () => {
+      if (!active()) return;
+      native.current = null; clearInterval(current.timer); clearTimeout(current.timeout); setLevel(0); setPhase('idle');
+      if (current.failed) { startLocal(); return; }
+      const text = formatDictation(current.text);
+      if (text) deliver.current(text);
+    };
+    current.timeout = setTimeout(fallbackLocal, 4000);
+    try { recognition.start(); } catch { current.failed = true; native.current = null; clearTimeout(current.timeout); startLocal(); }
+  };
+
+  return {phase, level, error, elapsed, interim, engine, start, stop, cancel, clearError: () => setError('')};
 }

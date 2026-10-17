@@ -24,6 +24,7 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
       console.log(`Checking general agent at ${width}px`);
       const mobile = width < 1024;
       const context = await browser.newContext({viewport: {width, height}, serviceWorkers: 'block', permissions: ['microphone'], locale: 'es-MX', hasTouch: mobile, isMobile: mobile});
+      await context.addInitScript(() => { window.SpeechRecognition = undefined; window.webkitSpeechRecognition = undefined; });
       const page = await context.newPage();
       const errors = [], posts = [];
       let rejectSend = false;
@@ -66,7 +67,7 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
 
       // Proveedor y mensaje escrito.
       assert(await page.getByRole('radio').count() === 0, 'La conversación expone el selector de proveedor');
-      assert(await page.locator('.orb-visual .orb-dust i').count() >= 28, 'No se comparte la esfera con partículas');
+      assert(await page.locator('.orb-particles').count() >= 3, 'No se comparte la nube de partículas');
       await page.getByRole('button', {name: 'Escribir'}).click();
       await page.locator('.general-compose textarea').fill('¿Cómo está el servidor?');
       await page.getByRole('button', {name: 'Enviar', exact: true}).click();
@@ -126,13 +127,17 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
       await page.waitForFunction(() => document.querySelector('.live-orb').dataset.state === 'listening', null, {timeout: 8000});
       await page.waitForTimeout(1500);
       await orb.click();
-      await page.locator('.pending-message', {hasText: 'Revisa los logs de poleana'}).waitFor({timeout: 8000});
-      await page.waitForFunction(() => !document.querySelector('.pending-message'), null, {timeout: 6000});
+      await page.waitForFunction(() => !document.querySelector('.pending-message') && document.querySelector('.voice-end'), null, {timeout: 8000});
+      for (let attempt = 0; attempt < 50 && !posts.some(p=>p.path === '/api/agent/send' && /revisa los logs de poleana/i.test(p.text || '')); attempt++) await page.waitForTimeout(100);
       const spoken = posts.filter(p => p.path === '/api/agent/send').at(-1);
       assert(/revisa los logs de poleana/i.test(spoken.text) && spoken.provider === 'codex', 'El dictado no se envió');
 
+      await page.getByRole('button', {name:'Terminar conversación',exact:true}).click();
       await page.emulateMedia({reducedMotion: 'reduce'});
-      assert(await page.locator('.orb-dust i').first().evaluate(el => getComputedStyle(el).animationName) === 'none', 'No respeta movimiento reducido');
+      await page.waitForTimeout(300);
+      const still = await page.locator('.live-orb canvas').evaluate(el=>el.toDataURL());
+      await page.waitForTimeout(250);
+      assert(await page.locator('.live-orb canvas').evaluate(el=>el.toDataURL()) === still, 'No respeta movimiento reducido');
       // Crear proyectos sigue solo en Proyectos.
       await page.goto(`${base}/projects`);
       await page.locator('a.new-project-button', {hasText: 'Nuevo proyecto'}).waitFor();

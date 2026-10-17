@@ -8,7 +8,7 @@ import os, tempfile, threading, time
 from . import config
 
 LOCK = threading.RLock()
-FIELDS = ('id', 'status', 'provider', 'project', 'priority', 'date', 'title', 'details', 'started_at', 'finished_at', 'result', 'run_id', 'origin', 'chat_id', 'model', 'effort')
+FIELDS = ('id', 'status', 'provider', 'project', 'priority', 'date', 'title', 'details', 'started_at', 'finished_at', 'result', 'run_id', 'origin', 'chat_id', 'model', 'effort', 'providers_tried')
 LEGACY_STATUS = {'pendiente': 'espera', 'enviada': 'working', 'en_progreso': 'working', 'completada': 'terminado'}
 PRIORITY_ORDER = {'alta': 0, 'media': 1, 'baja': 2}
 STATUSES = ('espera', 'working', 'terminado', 'error')
@@ -73,7 +73,7 @@ def new_task(project, provider, title, details='', priority='media', origin='tas
     title = ' '.join(str(title or '').split())[:200]
     return {'id': str(time.time_ns()), 'status': 'espera', 'provider': provider, 'project': project, 'priority': priority if priority in PRIORITY_ORDER else 'media',
             'date': time.strftime('%Y-%m-%d'), 'title': title, 'details': str(details or '').strip(), 'started_at': '', 'finished_at': '', 'result': '',
-            'run_id': '', 'origin': origin, 'chat_id': chat_id, 'model': model, 'effort': effort}
+            'run_id': '', 'origin': origin, 'chat_id': chat_id, 'model': model, 'effort': effort, 'providers_tried': ''}
 
 
 def task_prompt(task):

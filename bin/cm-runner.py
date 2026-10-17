@@ -47,7 +47,7 @@ def agent_env():
 
 
 def claude_command(meta, run_dir):
-    argv = [str(LOCAL_BIN / 'claude'), '-p', '--output-format', 'stream-json', '--verbose']
+    argv = [str(LOCAL_BIN / 'claude'), '-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages']
     if meta.get('resume_id'):
         argv += ['--resume', meta['resume_id']]
     elif meta.get('session_id'):

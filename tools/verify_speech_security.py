@@ -14,9 +14,11 @@ sys.path.insert(0, "/speech")
 import server
 
 class Model:
+    def __init__(self): self.calls = 0
     def transcribe(self, audio, **kwargs):
+        self.calls += 1
         assert len(audio) >= 12000
-        return iter([]), SimpleNamespace(language='es')
+        return iter([SimpleNamespace(text='Audio de prueba', no_speech_prob=.1, avg_logprob=-.1)]), SimpleNamespace(language='es')
 server.MODEL = Model()
 rate=48000
 samples=(np.sin(np.arange(rate)*2*math.pi*440/rate)*0.1).astype(np.float32)
@@ -33,6 +35,24 @@ for format,codec in [('webm','libopus'),('mp4','aac')]:
         for packet in stream.encode(None):container.mux(packet)
     server.transcribe(encoded.getvalue(),'es','')
 
+server.MODEL_FAST = Model()
+normal_calls = server.MODEL.calls
+assert server.transcribe(wav.getvalue(),'es','',True)['engine'] == 'whisper-tiny-local'
+assert server.MODEL_FAST.calls == 1 and server.MODEL.calls == normal_calls
+long_wav=io.BytesIO()
+with wave.open(long_wav,'wb') as out:
+    out.setnchannels(1);out.setsampwidth(2);out.setframerate(rate);out.writeframes((np.tile(samples,31)*32767).astype(np.int16).tobytes())
+assert server.transcribe(long_wav.getvalue(),'es','',True)['engine'] == 'whisper-small-local'
+assert server.MODEL_FAST.calls == 1 and server.MODEL.calls == normal_calls + 1
+
+class RepeatingModel:
+    def transcribe(self,*args,**kwargs):
+        return iter([SimpleNamespace(text='repite '*50,no_speech_prob=.1,avg_logprob=-.1)]),SimpleNamespace(language='es')
+server.MODEL_FAST = RepeatingModel()
+try:server.transcribe(wav.getvalue(),'es','',True)
+except ValueError:pass
+else:raise AssertionError('No rechazó una alucinación repetitiva')
+
 hits=[]
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -47,4 +67,4 @@ try:
     assert not hits,'El decodificador abrió una URL de una lista'
 finally:
     http.shutdown();http.server_close();thread.join(timeout=2)
-print('SPEECH_SECURITY_OK: WAV, WebM/Opus, MP4/AAC reales; HLS/concat rechazados sin conexiones de red. Sin inferencia.')
+print('SPEECH_SECURITY_OK: WAV, WebM/Opus, MP4/AAC reales; HLS/concat rechazados sin conexiones de red. Selección tiny/small según duración verificada. Sin inferencia.')

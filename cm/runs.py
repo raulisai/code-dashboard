@@ -216,6 +216,19 @@ def project_catalog():
     return [(path.name, projects.readme_summary(path)) for path in projects.projects()][:120]
 
 
+GENERAL_PRESENTATION_GUIDE = (
+    'Conversación: para saludos y charla responde de forma natural y breve sin ejecutar herramientas ni revisar el servidor. '
+    'Para acciones trabaja con autonomía y di qué proyecto estás atendiendo. No inventes saldos ni disponibilidad: el panel cambia de conexión si falla. '
+    'Puedes mostrar planos, gráficos, tablas, archivos e interfaces con bloques ```cm-ui seguidos de JSON válido y cierre ```. '
+    'Ejemplos: ' + json.dumps({'type':'chart','title':'Gráfico','labels':['A','B'],'values':[3,7]}) + '; '
+    + json.dumps({'type':'table','title':'Datos','columns':['Nombre','Valor'],'rows':[['A',3]]}) + '; '
+    + json.dumps({'type':'html','title':'Plano','html':'<svg viewBox="0 0 400 300"><rect x="10" y="10" width="300" height="200" fill="lightblue"/></svg>'}) + '; '
+    + json.dumps({'type':'file','title':'Archivo','project':'nombre-proyecto','path':'public/plano.svg'}) + '. '
+    'HTML aislado, sin scripts, red ni acceso al panel; usa HTML/CSS/SVG autocontenidos. No incluyas secretos. '
+    'Pon una explicación breve fuera del bloque. Usa presentaciones solo cuando ayuden.'
+)
+
+
 def general_prompt():
     rows = '\n'.join(f'- {name}: {summary or "sin descripción"} — https://{name}.{config.DOMAIN}' for name, summary in project_catalog())
     return ('Eres el agente general de Codex Manager en este VPS de desarrollo (usuario dv1): conoces todos los proyectos de '
@@ -232,6 +245,7 @@ def general_prompt():
             'cuenta rootai ni su acceso SSH, no reinicies Docker ni Traefik salvo necesidad clara, no borres datos sin copia y no '
             'detengas trabajo de otros proyectos que no te pidan.\n'
             '- Para crear un proyecto nuevo, indica el botón «Nuevo proyecto» de la sección Proyectos (prepara subdominio, scaffold y repo).\n\n'
+            f'{GENERAL_PRESENTATION_GUIDE}\n\n'
             f'Proyectos actuales:\n{rows or "- (ninguno todavía)"}')
 
 
@@ -259,6 +273,9 @@ def start_run(task):
             # proyectos no es un repositorio: el agente general hace commit en cada proyecto que cambie.
             'versioning': settings['auto_commit'] == 'on' and not general}
     if handed: meta['handoff'] = handed
+    meta['providers_tried'] = task.get('providers_tried', '')
+    if general and ',' in task.get('providers_tried', ''):
+        prompt = '[Continuidad automática: la otra conexión falló por disponibilidad. Revisa el estado y los cambios ya realizados antes de continuar; no repitas operaciones completadas.]\n\n' + prompt
     meta['effort'] = task.get('effort', '') if not general else ''
     if provider == 'claude':
         if not stored: meta['session_id'] = str(uuid.uuid4())
@@ -269,7 +286,7 @@ def start_run(task):
             # Codex no tiene --append-system-prompt: el contexto va al inicio del primer mensaje.
             prompt = f'[Contexto de Codex Manager] {general_prompt() if general else system_prompt(project)}\n\n{prompt}'
         elif general:
-            prompt = f'[Contexto de Codex Manager] Proyectos actuales: {", ".join(name for name, _ in project_catalog()) or "ninguno"}.\n\n{prompt}'
+            prompt = f'[Contexto de Codex Manager] Proyectos actuales: {", ".join(name for name, _ in project_catalog()) or "ninguno"}.\n\n{GENERAL_PRESENTATION_GUIDE}\n\n{prompt}'
     (run_dir / 'prompt.txt').write_text(prompt)
     (run_dir / 'request.txt').write_text(request)
     write_json(run_dir / 'meta.json', meta)
@@ -347,11 +364,22 @@ def normalize_claude(rows):
             info.update({'session_id': row.get('session_id'), 'model': row.get('model'), 'permission_mode': row.get('permissionMode')})
         elif kind == 'system' and row.get('subtype') == 'api_retry':
             events.append({'t': 'notice', 'text': f"Reintentando la API (intento {row.get('attempt', '?')})…"})
+        elif kind == 'stream_event':
+            event = row.get('event') or {}
+            if event.get('type') == 'content_block_start' and (event.get('content_block') or {}).get('type') == 'text':
+                events.append({'t':'text', 'text':'', 'sub':nested, 'streaming':True})
+            elif event.get('type') == 'content_block_delta' and (event.get('delta') or {}).get('type') == 'text_delta':
+                current = next((e for e in reversed(events) if e.get('streaming') and e.get('sub') == nested), None)
+                if current is None:
+                    current = {'t':'text', 'text':'', 'sub':nested, 'streaming':True}; events.append(current)
+                current['text'] += event['delta'].get('text', '')
         elif kind == 'assistant':
             for block in (row.get('message') or {}).get('content') or []:
                 btype = block.get('type')
                 if btype == 'text' and block.get('text', '').strip():
-                    events.append({'t': 'text', 'text': block['text'], 'sub': nested})
+                    partial = next((e for e in reversed(events) if e.get('streaming') and e.get('sub') == nested and block['text'].startswith(e['text'])), None)
+                    if partial is not None: partial.update(text=block['text'], streaming=False)
+                    else: events.append({'t': 'text', 'text': block['text'], 'sub': nested})
                 elif btype == 'thinking' and block.get('thinking', '').strip():
                     events.append({'t': 'thinking', 'text': clip(block['thinking'], 4000), 'sub': nested})
                 elif btype == 'tool_use':
@@ -453,6 +481,7 @@ def run_status(meta, exit_data, info):
         return 'stopping' if (config.RUNS / meta['id'] / 'stop').exists() else 'running'
     if exit_data.get('stopped'): return 'stopped'
     result = info.get('result')
+    if (info.get('limits') or {}).get('status') == 'rejected' and not (result or {}).get('ok'): return 'error'
     if exit_data.get('code') == 0 and (result is None or result.get('ok')): return 'done'
     return 'error'
 
@@ -517,7 +546,7 @@ def describe_run(meta, full=True):
     data = {'id': run_id, 'provider': meta['provider'], 'project': meta['project'], 'task_id': meta.get('task_id'), 'origin': meta.get('origin'), 'chat_id': meta.get('chat_id', 'main'),
             'created_at': meta.get('created_at'), 'finished_at': (exit_data or {}).get('finished_at'), 'status': status,
             'prompt': clip(prompt, 8000), 'effort': meta.get('effort', ''), 'model': info.get('model') or meta.get('model') or '', 'result': info.get('result'),
-            'event_count': len(events), 'permission': meta.get('permission') or meta.get('sandbox'), 'resumed': bool(meta.get('resume_id')), 'handoff': meta.get('handoff', 0)}
+            'event_count': len(events), 'permission': meta.get('permission') or meta.get('sandbox'), 'resumed': bool(meta.get('resume_id')), 'handoff': meta.get('handoff', 0), 'providers_tried': meta.get('providers_tried', '')}
     if info.get('limits'): data['limits'] = info['limits']
     version = read_json(config.RUNS / run_id / 'versions.json', None)
     if isinstance(version, dict): data['version'] = {k: version.get(k) or '' for k in ('base', 'commit', 'error')}
@@ -529,7 +558,7 @@ def describe_run(meta, full=True):
         if not data['error'] and not (info.get('result') or {}).get('text'):
             data['error'] = stderr_tail(run_id, 1500) or f"El agente terminó con código {(exit_data or {}).get('code')}"
         if (info.get('limits') or {}).get('status') == 'rejected':
-            data['error'] = 'Claude alcanzó su límite de uso. Puedes usar Codex o reintentar cuando se restablezca el cupo.'
+            data['error'] = f"{label(meta['provider'])} rechazó la petición por un límite de uso."
     return data
 
 
@@ -670,6 +699,22 @@ def _finalize(task, meta):
     else:
         detail = describe_run(meta, full=False).get('error') or result
         task['status'], task['result'] = 'error', clip(' '.join(str(detail or 'Error desconocido').split()), 600)
+    from . import availability
+    if status == 'done': availability.observe(meta['provider'])
+    elif status == 'error':
+        reason = availability.failure(info, describe_run(meta, full=False).get('error') or '')
+        if reason:
+            availability.observe(meta['provider'], reason)
+            if task['project'] == config.GENERAL:
+                tried = list(dict.fromkeys([*filter(None, task.get('providers_tried', '').split(',')), meta['provider']]))
+                task['providers_tried'] = ','.join(tried)
+                other = availability.choose(meta['provider'], tried)
+                if other:
+                    task.update(provider=other, status='espera', model='', effort='', finished_at='',
+                                result='El agente no está disponible. Continúo con la otra conexión.')
+                else:
+                    task['result'] = 'Las dos conexiones no están disponibles ahora. Puedes reintentar cuando se restablezcan.'
+
 
 
 def tick():
@@ -721,6 +766,12 @@ def tick():
             if not tmux.host_server_ok():
                 AUTOMATION['last_message'] = tmux.server_error()
                 break
+            if task['project'] == config.GENERAL and not task.get('providers_tried'):
+                from . import availability
+                task['provider'] = availability.choose(task['provider']) or task['provider']
+            if task['project'] == config.GENERAL:
+                tried = list(dict.fromkeys([*filter(None, task.get('providers_tried', '').split(',')), task['provider']]))
+                task['providers_tried'] = ','.join(tried)
             ok, message, run_id = start_run(task)
             task['run_id'] = run_id
             if ok:
