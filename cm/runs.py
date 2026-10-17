@@ -13,6 +13,7 @@ Claude y Codex comparten cada chat: al cambiar de agente, el elegido recibe un r
 las peticiones del chat que no vio (handoff_context), así el trabajo sigue sin repetirlo.
 """
 import hashlib, json, re, secrets, threading, time, uuid
+from datetime import datetime
 from functools import wraps
 from pathlib import Path
 from . import config, tasks, tmux
@@ -210,12 +211,37 @@ def handoff_context(project, chat_id, provider, stored):
     return f'{header}\n\n' + '\n\n'.join(parts) + '\n\n[Mensaje actual del usuario]\n', len(parts)
 
 
+def project_catalog():
+    from . import projects
+    return [(path.name, projects.readme_summary(path)) for path in projects.projects()][:120]
+
+
+def general_prompt():
+    rows = '\n'.join(f'- {name}: {summary or "sin descripción"} — https://{name}.{config.DOMAIN}' for name, summary in project_catalog())
+    return ('Eres el agente general de Codex Manager en este VPS de desarrollo (usuario dv1): conoces todos los proyectos de '
+            f'{config.HOST_PROJECTS} y administras el servidor. El usuario te habla desde la esfera central del panel, casi siempre '
+            'desde el celular y a menudo por voz (puede haber errores de transcripción): responde en español, breve y conversacional, '
+            'y termina con una frase corta que resuma lo hecho o lo que necesitas, porque puede leerse en voz alta.\n\n'
+            'Cómo trabajar:\n'
+            '- Deduce a qué proyecto se refiere por su nombre aproximado, su descripción o lo que se habló antes. Si hay ambigüedad real, '
+            'pregunta con opciones cortas. Di siempre en qué proyecto estás trabajando.\n'
+            '- Antes de tocar un proyecto entra en su carpeta y sigue sus instrucciones (CLAUDE.md, AGENTS.md, SEMILLA.md o README).\n'
+            '- Si cambias código de un proyecto desplegado, reconstruye con `docker compose up -d --build` en su carpeta, verifica su URL '
+            'con curl y haz un commit en el repositorio de ese proyecto. No hagas push.\n'
+            f'- Administración: contenedores, logs, disco, memoria y servicios. Respeta {config.HOST_PROJECTS}/CLAUDE.md: no toques la '
+            'cuenta rootai ni su acceso SSH, no reinicies Docker ni Traefik salvo necesidad clara, no borres datos sin copia y no '
+            'detengas trabajo de otros proyectos que no te pidan.\n'
+            '- Para crear un proyecto nuevo, indica el botón «Nuevo proyecto» de la sección Proyectos (prepara subdominio, scaffold y repo).\n\n'
+            f'Proyectos actuales:\n{rows or "- (ninguno todavía)"}')
+
+
 def start_run(task):
     """Lanza la petición en el host. Devuelve (ok, mensaje, run_id)."""
     provider, project = task['provider'], task['project']
     project_dir = config.PROJECTS / project
+    general = project == config.GENERAL
     if provider not in config.PROVIDERS: return False, 'Agente inválido', ''
-    if not re.fullmatch(config.PROJECT_NAME, project) or project_dir.resolve().parent != config.PROJECTS.resolve() or not project_dir.is_dir():
+    if not general and (not re.fullmatch(config.PROJECT_NAME, project) or project_dir.resolve().parent != config.PROJECTS.resolve() or not project_dir.is_dir()):
         return False, f'El proyecto {project} no existe', ''
     settings = load_settings()
     run_id = new_id()
@@ -227,18 +253,22 @@ def start_run(task):
     handoff, handed = handoff_context(project, chat_id, provider, stored)
     prompt = handoff + request
     meta = {'id': run_id, 'kind': 'agent', 'provider': provider, 'project': project, 'task_id': task['id'], 'chat_id': chat_id,
-            'cwd': f'{config.HOST_PROJECTS}/{project}', 'created_at': time.time(), 'resume_id': stored, 'origin': task.get('origin', 'task'),
-            # El runner guarda una versión antes y otra después del agente (bin/cm-runner.py).
-            'title': ' '.join(str(task.get('title') or '').split())[:100], 'versioning': settings['auto_commit'] == 'on'}
+            'cwd': config.HOST_PROJECTS if general else f'{config.HOST_PROJECTS}/{project}', 'created_at': time.time(), 'resume_id': stored,
+            'origin': task.get('origin', 'task'), 'title': ' '.join(str(task.get('title') or '').split())[:100],
+            # El runner guarda una versión antes y otra después del agente (bin/cm-runner.py). La raíz de
+            # proyectos no es un repositorio: el agente general hace commit en cada proyecto que cambie.
+            'versioning': settings['auto_commit'] == 'on' and not general}
     if handed: meta['handoff'] = handed
     if provider == 'claude':
         if not stored: meta['session_id'] = str(uuid.uuid4())
-        meta.update({'model': settings['claude_model'], 'permission': settings['claude_permission'], 'system_prompt': system_prompt(project)})
+        meta.update({'model': settings['claude_model'], 'permission': settings['claude_permission'], 'system_prompt': general_prompt() if general else system_prompt(project)})
     else:
         meta.update({'model': settings['codex_model'], 'sandbox': settings['codex_sandbox']})
         if not stored:
             # Codex no tiene --append-system-prompt: el contexto va al inicio del primer mensaje.
-            prompt = f'[Contexto de Codex Manager] {system_prompt(project)}\n\n{prompt}'
+            prompt = f'[Contexto de Codex Manager] {general_prompt() if general else system_prompt(project)}\n\n{prompt}'
+        elif general:
+            prompt = f'[Contexto de Codex Manager] Proyectos actuales: {", ".join(name for name, _ in project_catalog()) or "ninguno"}.\n\n{prompt}'
     (run_dir / 'prompt.txt').write_text(prompt)
     (run_dir / 'request.txt').write_text(request)
     write_json(run_dir / 'meta.json', meta)
@@ -302,6 +332,11 @@ def _tool_output(content):
     return clip(content, 8000)
 
 
+def _epoch(value):
+    try: return datetime.fromisoformat(str(value).replace('Z', '+00:00')).timestamp()
+    except ValueError: return None
+
+
 def normalize_claude(rows):
     events, tools, info = [], {}, {}
     for row in rows:
@@ -320,7 +355,7 @@ def normalize_claude(rows):
                     events.append({'t': 'thinking', 'text': clip(block['thinking'], 4000), 'sub': nested})
                 elif btype == 'tool_use':
                     event = {'t': 'tool', 'id': block.get('id'), 'name': block.get('name'), 'input': _tool_input(block.get('input') or {}),
-                             'status': 'running', 'output': '', 'sub': nested}
+                             'status': 'running', 'output': '', 'sub': nested, 't0': _epoch(row.get('timestamp'))}
                     tools[block.get('id')] = event
                     events.append(event)
         elif kind == 'user':
@@ -330,6 +365,7 @@ def normalize_claude(rows):
                     event = tools[block['tool_use_id']]
                     event['output'] = _tool_output(block.get('content'))
                     event['status'] = 'error' if block.get('is_error') else 'done'
+                    event['t1'] = _epoch(row.get('timestamp'))
         elif kind == 'result':
             info['result'] = {'ok': not row.get('is_error') and row.get('subtype') == 'success', 'text': row.get('result') or '',
                               'cost': row.get('total_cost_usd'), 'duration_ms': row.get('duration_ms'), 'turns': row.get('num_turns'),

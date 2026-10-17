@@ -4,6 +4,7 @@ import {useApp} from '../App.jsx';
 import {navigate, post, providerLabel, taskLabel} from '../lib.js';
 import {Empty, ProviderMark, StatusPill, toast} from '../ui.jsx';
 import {Approval} from '../workspace/Agent.jsx';
+import {projectLabel, taskHref} from '../general.js';
 
 export default function Queue() {
   const {state, refresh} = useApp();
@@ -27,15 +28,15 @@ export default function Queue() {
     </header>
     <div className="status-line"><span className={state.tmux_ok ? 'dot on' : 'dot bad'}/>{state.automation?.last_message}</div>
     {(state.approvals || []).length > 0 && <section className="block"><div className="block-head"><h2>Esperan tu aprobación</h2></div>
-      {state.approvals.map(approval => <div key={approval.id} className="approval-wrap"><a className="link-small" href={`/p/${approval.project}?chat=${approval.chat_id || 'main'}`} onClick={e => { e.preventDefault(); navigate(`/p/${approval.project}?chat=${approval.chat_id || 'main'}`); }}>{approval.project}<ChevronRight size={12}/></a><Approval approval={approval} onAnswer={answer}/></div>)}
+      {state.approvals.map(approval => <div key={approval.id} className="approval-wrap"><a className="link-small" href={taskHref(approval)} onClick={e => { e.preventDefault(); navigate(taskHref(approval)); }}>{projectLabel(approval.project)}<ChevronRight size={12}/></a><Approval approval={approval} onAnswer={answer}/></div>)}
     </section>}
     {groups.map(([key, title, list]) => <section className="block" key={key}>
       <div className="block-head"><h2>{title} <span className="count">{list.length}</span></h2></div>
       {list.length ? <div className="task-list">{list.map(task => <div className={`task-row ${task.status}`} key={task.id}>
         <ProviderMark provider={task.provider} size={28}/>
-        <button className="task-main" onClick={() => navigate(`/p/${task.project}?chat=${task.chat_id || 'main'}`)}>
+        <button className="task-main" onClick={() => navigate(taskHref(task))}>
           <b>{task.title || '(sin título)'}</b>
-          <small>{task.project} · {providerLabel(task.provider)} · {task.started_at || task.date}{task.priority === 'alta' ? ' · prioridad alta' : ''}</small>
+          <small>{projectLabel(task.project)} · {providerLabel(task.provider)} · {task.started_at || task.date}{task.priority === 'alta' ? ' · prioridad alta' : ''}</small>
           {task.result && task.status !== 'working' && <small className={task.status === 'error' ? 'err-text' : 'muted'}>{task.result}</small>}
         </button>
         <StatusPill status={task.status}>{taskLabel(task.status)}</StatusPill>

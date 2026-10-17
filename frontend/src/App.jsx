@@ -12,6 +12,7 @@ import Settings from './views/Settings.jsx';
 import {AuthenticatorSetup} from './Security.jsx';
 
 const Workspace = lazy(() => import('./views/Workspace.jsx'));
+const General = lazy(() => import('./views/General.jsx'));
 const AppContext = createContext(null);
 export const useApp = () => useContext(AppContext);
 const CACHE_KEY = 'cm-state-v2';
@@ -72,7 +73,7 @@ export default function App() {
     {workspace
       ? <Suspense fallback={<div className="boot"><Spinner size={22}/> Abriendo el proyecto…</div>}><Workspace key={workspace[1]} name={workspace[1]}/></Suspense>
       : <Shell path={path}>
-          {path === '/projects' ? <Projects/> : path === '/new' ? <Create/> : path === '/queue' ? <Queue/> : path === '/server' ? <Server/> : path === '/settings' ? <Settings onLogout={() => window.dispatchEvent(new Event('cm:unauthorized'))}/> : <Home/>}
+          {path === '/agent' ? <Suspense fallback={<div className="boot"><Spinner size={22}/> Despertando al agente…</div>}><General/></Suspense> : path === '/projects' ? <Projects/> : path === '/new' ? <Create/> : path === '/queue' ? <Queue/> : path === '/server' ? <Server/> : path === '/settings' ? <Settings onLogout={() => window.dispatchEvent(new Event('cm:unauthorized'))}/> : <Home/>}
         </Shell>}
     <Toaster/>
   </AppContext.Provider>;
@@ -87,13 +88,18 @@ function Shell({path, children}) {
   const items = [
     {to: '/', label: 'Inicio', icon: HomeIcon},
     {to: '/projects', label: 'Proyectos', icon: FolderOpen},
-    {to: '/new', label: 'Crear', icon: Sparkles, accent: true},
+    {to: '/agent', label: 'Agente', icon: Sparkles, accent: true},
     {to: '/queue', label: 'Cola', icon: ListTodo, badge: approvals || working + queued || 0, alert: approvals > 0},
     {to: '/server', label: 'Servidor', icon: ServerIcon},
     {to: '/settings', label: 'Ajustes', icon: SettingsIcon},
   ];
-  const go = (event, to) => { event.preventDefault(); navigate(to); window.scrollTo(0, 0); };
-  return <div className="shell">
+  const go = (event, to) => {
+    event.preventDefault();
+    // La esfera de la barra «viaja» al centro: el agente general anima su llegada desde esta posición.
+    if (to === '/agent' && path !== '/agent') window.cmOrbLaunch = event.currentTarget.querySelector('.creation-orb, .brand-orb')?.getBoundingClientRect() || null;
+    navigate(to); window.scrollTo(0, 0);
+  };
+  return <div className={path === '/agent' ? 'shell general-shell' : 'shell'}>
     <aside className="side">
       <a href="/" className="brand" onClick={event => go(event, '/')}><span className="brand-orb" aria-hidden="true"/><span>Codex <b>Manager</b></span></a>
       <nav>{items.map(item => <a key={item.to} href={item.to} onClick={event => go(event, item.to)} className={`side-link ${path === item.to ? 'on' : ''} ${item.accent ? 'accent' : ''}`}>

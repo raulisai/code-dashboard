@@ -111,6 +111,20 @@ Puedes instalar la PWA desde **Ajustes** o el menú del navegador. En iPhone,
 usa Safari → Compartir → Añadir a pantalla de inicio. La interfaz y los paneles
 ya visitados pueden abrirse sin conexión; ejecutar acciones requiere conexión.
 
+## Agente general (esfera central)
+
+La esfera del centro de la barra abre **Agente** (`/agent`): un agente que conoce
+todos los proyectos de `/srv/projects`, administra el servidor y deduce a qué
+proyecto te refieres. Arriba eliges **Codex | Claude** y ves qué hace (titular,
+proyecto y «Actividad en tiempo real» con comando, resultado y duración). **Toca la
+esfera para hablar**: deja de escuchar tras una pausa (o al tocarla otra vez), el
+texto se envía solo a los 3 segundos (puedes **Editar** o **Cancelar**) y la
+respuesta se lee en voz alta (se desactiva en «…»). También puedes **Escribir**.
+En «…» están la conversación completa, el atajo al proyecto en uso y «Conversación
+nueva». Corre en la cola como el pseudo-proyecto `_general` con cwd `/srv/projects`
+y sin commit automático propio: hace commit en cada proyecto que modifique.
+Los proyectos nuevos se crean con **Proyectos → Nuevo proyecto**.
+
 ## Pedir cambios hablando
 
 El botón **Hablar** está en el chat del proyecto y en los formularios de creación.

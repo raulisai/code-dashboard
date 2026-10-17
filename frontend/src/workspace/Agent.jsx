@@ -88,7 +88,7 @@ export default function Agent({project, active}) {
   </div>;
 }
 
-function ChatConversation({project, active, chatId}) {
+function ChatConversation({project, active, chatId, attachments = true}) {
   const name = project.name;
   const [data, setData] = useState(null), [error, setError] = useState('');
   const storedProvider = providerKey(name, chatId);
@@ -220,7 +220,7 @@ function ChatConversation({project, active, chatId}) {
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !coarse) { e.preventDefault(); send(); } }}
           onInput={e => { e.target.style.height = 'auto'; e.target.style.height = `${Math.min(220, e.target.scrollHeight)}px`; }}/>
         <div className="composer-tools">
-          <label className="icon-btn" title="Adjuntar archivo o imagen" aria-label="Adjuntar">{uploading ? <Spinner/> : <Paperclip size={18}/>}<input type="file" multiple hidden onChange={upload}/></label>
+          {attachments && <label className="icon-btn" title="Adjuntar archivo o imagen" aria-label="Adjuntar">{uploading ? <Spinner/> : <Paperclip size={18}/>}<input type="file" multiple hidden onChange={upload}/></label>}
           <VoiceButton active={active} disabled={sending || uploading} onText={value => setText(current => insertDictation(current, value))}
             onSend={value => sendMessage(insertDictation(text, value))} sendLabel={`Enviar a ${providerLabel(nextProvider)}`}/>
           <span className="grow"/>
@@ -439,4 +439,4 @@ function Approval({approval, onAnswer}) {
   </div>;
 }
 
-export {Approval};
+export {Approval, ChatConversation};

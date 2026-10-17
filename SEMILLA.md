@@ -2,9 +2,23 @@
 
 > Leer antes de trabajar. Actualizar las secciones 0, 4 y 5 al terminar.
 
-Última actualización: 2026-10-17, 21:25 Europe/Berlin. Autor: Claude (crear proyecto desde repo Git / repo en GitHub).
+Última actualización: 2026-10-17, 21:58 Europe/Berlin. Autor: Claude (agente general en la esfera central).
 
 ## 0. Estado en una línea
+
+**Última sesión (Claude): la esfera central es ahora el agente general. Publicado.**
+El botón del centro de la barra abre `/agent`: la esfera viaja desde la barra al
+centro y crece. Vista como las imágenes del usuario: pastilla «Codex | Claude», «…»,
+titular de lo que hace («Ejecutando pruebas»), proyecto detectado y subtítulo;
+«Actividad en tiempo real» con iconos por tipo (git, docker, pruebas, web…),
+comando, detalle y duración; esfera viva animada según el estado. Tocar la esfera
+= hablar (Whisper local, corta tras 1,8 s de silencio; el texto se envía solo a los
+3 s salvo Editar/Cancelar) y la respuesta se lee en voz alta. El agente corre en
+`/srv/projects` (pseudo-proyecto `_general`) con el catálogo de proyectos en el
+prompt, administra el servidor y deduce a qué proyecto te refieres. **Crear
+proyectos queda solo en Proyectos → «Nuevo proyecto»** (`/new` sigue existiendo).
+**156 Python + 11 Node OK**, `GENERAL_BROWSER_OK` (360/390/1440) contra la URL real
+y prueba real: Claude respondió desde `/srv/projects` con el catálogo.
 
 **Última sesión (Claude): crear proyectos desde un repo Git y opción de repo en
 GitHub. Publicado.** En Crear hay «Nuevo desde cero | Desde un repo Git». Importar
@@ -162,7 +176,29 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   `auto_commit=on` por defecto y **no reescribir historial**: restaurar/deshacer
   crean commits nuevos; nada de `reset --hard`, force ni borrar ramas sin archivar.
 
+- Navegación: la **esfera central de la barra es el agente general** (`/agent`).
+  Crear proyectos se hace **solo** con el botón «Nuevo proyecto» de Proyectos; no
+  volver a poner `/new` en la barra.
+
 ## 4. Pendientes y límites de validación
+
+### Agente general / esfera central (sesión actual)
+
+- **Pendiente del usuario:** probarlo en el celular (micrófono, voz en iOS, animación
+  de la esfera) y decir si quiere ajustes de diseño. La prueba con voz usó un tono
+  sintético con transcripción simulada; la transcripción real es la misma de Crear.
+- La lectura en voz alta usa la voz del navegador (`speechSynthesis`, es-MX) y solo
+  lee respuestas de mensajes dictados en esa pestaña; se apaga en «…».
+- El agente general **no versiona** (la raíz `/srv/projects` no es repo; el prompt
+  le pide commit en cada proyecto que cambie). Usa los mismos permisos del panel
+  (Claude `auto`, Codex `full`): puede administrar todo el servidor.
+- Un solo chat (`main`) para el agente general; «Conversación nueva» reinicia el
+  contexto (el historial queda). La duración de Codex se mide en el navegador
+  (Codex no manda horas); Claude usa las marcas de tiempo del stream.
+- La prueba real dejó en su chat la petición «Prueba del agente general»
+  (run `20261017-195541-a6940f`, sin herramientas).
+- Rollback: imagen `codex-dashboard:before-general-agent-20261017`; parche y
+  archivos nuevos en `/srv/platform/backups/codex-dashboard-before-general-agent-20261017/`.
 
 ### Crear desde repo Git / repo en GitHub (sesión actual)
 
@@ -382,6 +418,33 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Agente general en la esfera central
+
+- Backend: `config.GENERAL='_general'`; `runs.general_prompt()` (rol, reglas del
+  servidor, catálogo de proyectos con resumen y URL) y `start_run` con cwd
+  `/srv/projects`, sin versionado; Codex recibe el catálogo también al reanudar.
+  `normalize_claude` añade `t0`/`t1` a las herramientas. `app.agent_project()`
+  acepta `_general` en agent/chats; `add_task` lo admite. `push.label/link`:
+  notificaciones «Agente general» → `/agent`.
+- Frontend: `general.js` (clasificar herramientas, filas, proyecto detectado,
+  titular, texto hablable), `useOrbVoice.js` (micrófono + medidor + silencio),
+  `views/General.jsx` + `general.css` (esfera con anillos, ondas, giro y estados
+  idle/working/thinking/listening/speaking; llegada animada desde la barra; hoja
+  «Ver conversación» con `ChatConversation`; aprobaciones; Detener; Escribir).
+  `App.jsx`: nav «Agente» con la esfera, ruta `/agent`, `/new` fuera de la barra.
+  Cola e Inicio enlazan las tareas del agente general a `/agent`.
+- Pruebas: `tests/test_general.py` (6), `frontend/tests/general.test.mjs` (6);
+  `tools/verify_general_browser.cjs` → **GENERAL_BROWSER_OK** (local y URL real):
+  esfera llega desde la barra y queda centrada, resumen del servidor, cambio a
+  Claude, envío escrito, actividad con duración y sin scroll, menú/hoja, Detener,
+  dictado con micrófono virtual que se envía solo, Proyectos conserva «Nuevo
+  proyecto». Capturas en `artifacts/general-20261017/`. Se corrigió que el fondo
+  tapara el aviso de tmux y que «Escribir» quedara bajo la barra en 360×740.
+- Desplegado con `docker compose up -d --build`: ambos servicios healthy; `/`,
+  `/agent`, `/projects`, `/health` 200; API sin sesión 401; Origin ajeno 403.
+  Real: tarea `_general` encolada en el contenedor → run en tmux del host con cwd
+  `/srv/projects`, `versioning: false`, catálogo en el prompt, terminó en 9,6 s.
 
 ### Crear proyecto desde repo Git y repo en GitHub
 

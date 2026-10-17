@@ -23,6 +23,8 @@ RETRY_AT = {}
 def subscription_file(): return config.CONFIG / 'push-subscriptions.json'
 def key_file(): return config.CONFIG / '.push-vapid.pem'
 def b64(data): return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
+def label(project): return 'Agente general' if project == config.GENERAL else project
+def link(project, chat_id): return f'/agent?chat={chat_id}' if project == config.GENERAL else f'/p/{project}?chat={chat_id}'
 
 
 def private_key():
@@ -88,12 +90,12 @@ def notifications():
     events = []
     for item in runs.all_pending_approvals():
         events.append((f"approval:{item['run_id']}:{item['id']}", {'title': f"{runs.label(item['provider'])} necesita tu aprobación",
-                       'body': f"{item['project']}: {item['tool_name']}", 'url': f"/p/{item['project']}?chat={item.get('chat_id', 'main')}", 'tag': f"approval-{item['id']}"}))
+                       'body': f"{label(item['project'])}: {item['tool_name']}", 'url': link(item['project'], item.get('chat_id', 'main')), 'tag': f"approval-{item['id']}"}))
     for task in tasks.task_records()[-300:]:
         if task['status'] not in ('terminado', 'error'): continue
         events.append((f"task:{task.get('run_id') or task['id']}:{task['status']}",
                        {'title': f"{runs.label(task['provider'])} {'terminó' if task['status'] == 'terminado' else 'necesita atención'}",
-                        'body': task['project'], 'url': f"/p/{task['project']}?chat={task.get('chat_id', 'main')}", 'tag': f"task-{task['id']}"}))
+                        'body': label(task['project']), 'url': link(task['project'], task.get('chat_id', 'main')), 'tag': f"task-{task['id']}"}))
     return events
 
 

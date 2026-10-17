@@ -52,6 +52,8 @@ CLAUDE_PERMISSIONS = ('ask', 'auto', 'edits')
 CODEX_SANDBOXES = ('full', 'workspace', 'read-only')
 PROVIDERS = ('claude', 'codex')
 PROJECT_NAME = r'[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?'
+# Agente general (esfera central): sus peticiones van a la cola como un proyecto especial con cwd en la raíz de proyectos.
+GENERAL = '_general'
 # Sesiones tmux internas que no se muestran como "sesiones de agente".
 INTERNAL_SESSION_PREFIXES = ('cmr-', 'cmj-', 'cm-keepalive')
 

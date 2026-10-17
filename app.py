@@ -78,6 +78,11 @@ async def security(request, handler):
     return response
 
 
+def agent_project(value):
+    # Las rutas del chat aceptan además el agente general (esfera central), que no es una carpeta de proyecto.
+    return config.GENERAL if value == config.GENERAL else project_param(value)
+
+
 def project_param(value):
     name = str(value or '')
     if name not in projects.project_names(): raise web.HTTPBadRequest(text=json.dumps({'message': 'Proyecto inválido'}), content_type='application/json')
@@ -193,7 +198,7 @@ def add_task(project, provider, title, details, priority='media', origin='task',
     task = tasks.new_task(project, provider, title, details, priority, origin, chat_id)
     with tasks.LOCK:
         chats.require(project, chat_id)
-        if lifecycle.deleting(project) or project not in projects.project_names():
+        if lifecycle.deleting(project) or (project != config.GENERAL and project not in projects.project_names()):
             raise web.HTTPConflict(text=json.dumps({'message': 'El proyecto ya no está disponible para nuevas peticiones'}), content_type='application/json')
         records = tasks.task_records()
         records.append(task)
@@ -203,7 +208,7 @@ def add_task(project, provider, title, details, priority='media', origin='task',
 
 
 async def agent_get(request):
-    project = project_param(request.query.get('project'))
+    project = agent_project(request.query.get('project'))
     try: chat_id = await blocking(chats.require, project, request.query.get('chat_id', 'main'))
     except ValueError as exc: return fail(str(exc), 404)
     rev = await blocking(runs.conversation_revision, project, chat_id)
@@ -219,7 +224,7 @@ async def agent_get(request):
 
 async def agent_send(request):
     data = await body(request)
-    project = project_param(data.get('project'))
+    project = agent_project(data.get('project'))
     provider = str(data.get('provider') or runs.load_settings()['default_provider'])
     text = str(data.get('text') or '').strip()
     if provider not in config.PROVIDERS: return fail('Agente inválido')
@@ -234,7 +239,7 @@ async def agent_send(request):
 
 async def agent_reset(request):
     data = await body(request)
-    project = project_param(data.get('project'))
+    project = agent_project(data.get('project'))
     try: chat_id = await blocking(chats.require, project, data.get('chat_id', 'main'))
     except ValueError as exc: return fail(str(exc), 404)
     ok, message = await blocking(runs.reset_conversation, project, str(data.get('provider')), chat_id)
@@ -242,13 +247,13 @@ async def agent_reset(request):
 
 
 async def chats_get(request):
-    project = project_param(request.query.get('project'))
+    project = agent_project(request.query.get('project'))
     return reply({'chats': await blocking(chats.list_chats, project)})
 
 
 async def chats_post(request):
     data = await body(request)
-    project = project_param(data.get('project'))
+    project = agent_project(data.get('project'))
     if data.get('action', 'create') not in ('create', 'rename', 'delete'): return fail('Acción de chat inválida')
     try:
         if data.get('action') == 'delete':
