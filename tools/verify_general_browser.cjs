@@ -1,8 +1,8 @@
-/* Agente general (esfera central) con la UI real y API simulada: no lanza agentes ni transcribe audio real. */
+/* Agente general compacto con UI real y API simulada: no lanza agentes ni transcribe audio real. */
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || '/home/dv1/.npm/_npx/fd3bca3c548369c0/node_modules/playwright-core');
 const fs = require('node:fs');
 const base = process.env.CM_TEST_URL || 'http://127.0.0.1:4178';
-const out = process.env.CM_ARTIFACTS || 'artifacts/general-20261017';
+const out = process.env.CM_ARTIFACTS || 'artifacts/general-responsive-20261018';
 const assert = (ok, message) => { if (!ok) throw new Error(message); };
 const now = () => Date.now() / 1000;
 // Tono de 440 Hz como «voz» del micrófono virtual (sin audio el medidor no detecta habla).
@@ -20,7 +20,7 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
   const wav = require('node:path').resolve(out, 'tono.wav'); toneWav(wav);
   const browser = await chromium.launch({headless: true, args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', `--use-file-for-fake-audio-capture=${wav}`]});
   try {
-    for (const [width, height] of [[360, 740], [390, 844], [1440, 900]]) {
+    for (const [width, height] of [[320, 640], [360, 740], [390, 844], [768, 1024], [1440, 900], [740, 390]]) {
       console.log(`Checking general agent at ${width}px`);
       const mobile = width < 1024;
       const context = await browser.newContext({viewport: {width, height}, serviceWorkers: 'block', permissions: ['microphone'], locale: 'es-MX', hasTouch: mobile, isMobile: mobile});
@@ -28,7 +28,9 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
       const page = await context.newPage();
       const errors = [], posts = [];
       let rejectSend = false;
-      let agent = {rev: '1', runs: [], queue: [], working: [], settings: {default_provider: 'codex'}};
+      let sequence = 0;
+      let agent = {rev: '1', runs: [{id: 'old-run', task_id: 'old-task', provider: 'codex', status: 'done', approvals: [], events: [],
+        prompt: 'Pregunta de una visita anterior', result: {text: 'Respuesta guardada de la visita anterior.'}}], queue: [], working: [], settings: {default_provider: 'codex'}};
       page.on('pageerror', error => { errors.push(String(error)); console.error('Browser error:', error.stack); });
       await context.route('**/api/**', async route => {
         const request = route.request(), url = new URL(request.url());
@@ -42,7 +44,12 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
         else if (url.pathname === '/api/agent/chats') result = {chats: [{id: 'main', title: 'Chat principal', working: 0, queued: 0}]};
         else if (url.pathname === '/api/voice/transcribe') result = {text: 'revisa los logs de poleana'};
         else if (url.pathname === '/api/voice') result = {ready: true, local: true};
-        else if (url.pathname === '/api/agent/send') result = {message: 'Enviado', task: {id: `t-${posts.length}`, project: data.project}};
+        else if (url.pathname === '/api/agent/send') {
+          const id = `sent-${++sequence}`;
+          agent = {...agent, rev: id, working: [{id}], runs: [...agent.runs, {id: `r-${id}`, task_id: id, provider: data.provider,
+            status: 'running', prompt: data.text, approvals: [], events: []}]};
+          result = {message: 'Enviado', task: {id, project: data.project}};
+        }
         await route.fulfill({status: url.pathname === '/api/agent/send' ? 201 : 200, json: result});
       });
 
@@ -56,14 +63,24 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
       const orb = page.locator('.live-orb');
       await orb.waitFor();
       if (mobile) assert(await orb.evaluate(el => el.style.getPropertyValue('--from-y') !== ''), 'La esfera no viaja desde la barra');
-      await page.locator('.general h1', {hasText: '¿Qué hacemos hoy?'}).waitFor();
-      assert(/3 proyectos · 2 en línea · CPU 12%/.test(await page.locator('.general-status p').innerText()), 'Resumen del servidor incorrecto');
+      const status = page.locator('.general-status'), label = page.locator('.general-state-label');
+      await label.filter({hasText: 'Disponible'}).waitFor();
+      const idleText = await page.locator('.general').innerText();
+      assert(!/¿Qué hacemos hoy\?|\d+ proyectos ·|CPU \d+%|Pregunta de una visita anterior|Respuesta guardada de la visita anterior/.test(idleText), 'La entrada muestra información que no se ha pedido');
+      assert(await page.locator('.general-suggestions').count() === 0, 'Siguen visibles las sugerencias permanentes');
+      assert(await page.locator('.general-response').count() === 0, 'La respuesta de otra visita se abrió sola');
       await page.waitForTimeout(1200);
       const box = await orb.boundingBox();
       assert(Math.abs(box.x + box.width / 2 - (mobile ? width / 2 : (await page.locator('.general').boundingBox()).x + (await page.locator('.general').boundingBox()).width / 2)) < 3, 'La esfera no está centrada');
-      assert(box.width > Math.min(width * .5, 200), `Esfera pequeña: ${box.width}`);
-      await page.screenshot({path: `${out}/idle-${width}.png`});
+      assert(box.width >= Math.min(width * .28, height * .22), `Esfera pequeña: ${box.width}`);
+      await page.screenshot({path: `${out}/idle-${width}x${height}.png`});
       assert(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1), 'La vista en reposo no cabe en pantalla');
+
+      // Las respuestas guardadas solo aparecen al pedirlas y se pueden volver a ocultar.
+      await page.getByRole('button', {name: 'Ver respuesta', exact: true}).click();
+      await page.locator('.general-response', {hasText: 'Respuesta guardada de la visita anterior.'}).waitFor();
+      await page.getByRole('button', {name: 'Ocultar respuesta', exact: true}).click();
+      assert(await page.locator('.general-response').count() === 0, 'No ocultó la respuesta');
 
       // Proveedor y mensaje escrito.
       assert(await page.getByRole('radio').count() === 0, 'La conversación expone el selector de proveedor');
@@ -74,6 +91,10 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
       await page.waitForFunction(() => !document.querySelector('.general-compose'));
       const sent = posts.find(p => p.path === '/api/agent/send');
       assert(sent && sent.project === '_general' && sent.provider === 'codex' && sent.chat_id === 'main' && sent.text === '¿Cómo está el servidor?', 'Mensaje mal enviado');
+      await label.filter({hasText: 'Pensando'}).waitFor({timeout: 8000});
+      agent = {...agent, rev: 'sent-done', working: [], runs: [...agent.runs.slice(0, -1), {...agent.runs.at(-1), status: 'done', result: {text: 'Respuesta nueva a tu solicitud.'}}]};
+      await page.locator('.general-response', {hasText: 'Respuesta nueva a tu solicitud.'}).waitFor({timeout: 8000});
+      await page.getByRole('button', {name: 'Ocultar respuesta', exact: true}).click();
 
       // Un fallo conserva el borrador y permite reintentar.
       rejectSend = true;
@@ -86,7 +107,7 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
       await page.getByRole('button', {name: 'Enviar', exact: true}).click();
       await page.waitForFunction(() => !document.querySelector('.general-compose'));
 
-      // Trabajando: titular, proyecto detectado y actividad en tiempo real como en la referencia.
+      // Trabajando: solo estado e icono; comandos y proyecto se consultan en el panel.
       const t = now();
       agent = {...agent, rev: '2', working: [{id: 't-1'}], runs: [{id: 'r1', task_id: 't-1', provider: 'claude', status: 'running', approvals: [], events: [
         {t: 'text', text: 'Reviso poleana-game.'},
@@ -94,21 +115,45 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
         {t: 'tool', name: 'Bash', input: {command: 'docker compose up -d'}, status: 'done', output: '4 servicios iniciados', t0: t - 27, t1: t - 1},
         {t: 'tool', name: 'Bash', input: {command: 'npm test', description: 'Ejecutando pruebas...'}, status: 'running', t0: t - 3},
         {t: 'text', text: 'Generando reporte...'}]}]};
-      await page.locator('.general h1', {hasText: 'Ejecutando pruebas'}).waitFor({timeout: 8000});
-      await page.locator('.general-project', {hasText: 'poleana-game'}).waitFor();
+      await label.filter({hasText: 'Ejecutando pruebas'}).waitFor({timeout: 8000});
+      assert(await status.getAttribute('data-kind') === 'test', 'El estado no identifica las pruebas');
+      assert(!/git push|docker compose|Generando reporte|poleana-game/.test(await page.locator('.general').innerText()), 'Los detalles de actividad aparecen sin pedirlos');
+      assert(await page.locator('.activity-row:visible').count() === 0, 'La actividad aparece desplegada');
       await page.waitForTimeout(800); // Esperar el cambio de tamaño suave antes de medir layout.
-      const rows = page.locator('.activity-row');
-      assert(await rows.count() === 3, 'Filas de actividad incorrectas');
       assert(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1), 'La vista con actividad no cabe en pantalla');
-      assert(/^git push origin preproduccion/.test(await rows.first().locator('code').innerText()) && /12s/.test(await rows.first().innerText()), 'Fila de git sin comando o duración');
-      assert(await page.locator('.activity-row.running .ring').count() === 1, 'Sin indicador de la tarea en curso');
       assert(await orb.getAttribute('data-state') === 'working', 'La esfera no indica trabajo');
-      await page.locator('.activity-typing', {hasText: 'Generando reporte'}).waitFor();
       const dimensions = await page.evaluate(() => ({width: innerWidth, scroll: document.documentElement.scrollWidth}));
       assert(dimensions.scroll <= dimensions.width + 1, `Desbordamiento ${width}`);
       const orbBox = await orb.boundingBox(), navBox = mobile ? await page.locator('.bottom-nav').boundingBox() : null;
       if (navBox) assert(orbBox.y + orbBox.height <= navBox.y + 2, 'La esfera queda bajo la barra');
-      await page.screenshot({path: `${out}/working-${width}.png`});
+      await page.screenshot({path: `${out}/working-${width}x${height}.png`});
+
+      const activityButton = page.getByRole('button', {name: 'Ver actividad', exact: true});
+      await activityButton.click();
+      const details = page.getByRole('dialog', {name: 'Actividad del agente general', exact: true});
+      await details.waitFor();
+      assert(await details.evaluate(el => el.tagName === 'DIALOG' && el.open), 'Actividad no usa diálogo modal nativo');
+      const rows = details.locator('.activity-row');
+      assert(await rows.count() === 3, 'Filas de actividad incorrectas');
+      await details.locator('.general-project', {hasText: 'poleana-game'}).waitFor();
+      assert(/^git push origin preproduccion/.test(await rows.first().locator('code').innerText()) && /12s/.test(await rows.first().innerText()), 'Fila de git sin comando o duración');
+      assert(await details.locator('.activity-row.running .ring').count() === 1, 'Sin indicador de la tarea en curso');
+      for (let i = 0; i < 6; i++) {
+        await page.keyboard.press('Tab');
+        assert(await details.evaluate(el => el.contains(document.activeElement)), 'El foco escapó del panel de actividad');
+      }
+      await page.keyboard.press('Escape');
+      await details.waitFor({state: 'hidden'});
+      assert(await activityButton.evaluate(el => el === document.activeElement), 'Cerrar actividad no devuelve el foco');
+
+      // Al cambiar de herramienta se actualiza el icono y el texto desde eventos reales.
+      const previousIcon = await status.locator('svg').first().innerHTML();
+      agent = {...agent, rev: 'deploying', runs: [{...agent.runs[0], events: [
+        ...agent.runs[0].events.map(event => event.t === 'tool' && event.status === 'running' ? {...event, status: 'done', t1: now()} : event),
+        {t: 'tool', name: 'Bash', input: {command: 'docker compose up -d --build'}, status: 'running', t0: now()}]}]};
+      await label.filter({hasText: 'Desplegando'}).waitFor({timeout: 8000});
+      assert(await status.getAttribute('data-kind') === 'docker', 'El icono no cambió a Docker');
+      assert(await status.locator('svg').first().innerHTML() !== previousIcon, 'El dibujo del icono no cambió');
 
       // Menú: conversación completa en una hoja y atajo al proyecto.
       await page.getByRole('button', {name: 'Más opciones'}).click();
@@ -116,13 +161,17 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
       await page.getByRole('menuitem', {name: 'Ver conversación'}).click();
       await page.getByRole('dialog', {name: 'Conversación con el agente general'}).waitFor();
       assert(await page.getByRole('dialog').getByRole('radio').count() === 0, 'El historial muestra modelos');
-      await page.getByRole('dialog', {name: 'Conversación con el agente general'}).getByRole('button', {name: 'Cerrar', exact: true}).click();
-      await page.getByRole('button', {name: 'Detener'}).click();
+      assert(await page.getByRole('dialog', {name: 'Conversación con el agente general'}).evaluate(el => el.tagName === 'DIALOG'), 'Historial no usa diálogo nativo');
+      await page.keyboard.press('Escape');
+      await page.getByRole('dialog', {name: 'Conversación con el agente general'}).waitFor({state: 'hidden'});
+      await activityButton.click();
+      await details.getByRole('button', {name: /^Detener/}).click();
       assert(posts.some(p => p.path === '/api/runs/r1/stop'), 'Detener no llamó a la API');
+      await page.keyboard.press('Escape');
 
       // Hablar: tocar la esfera escucha, tocar otra vez transcribe y el texto se envía solo.
       agent = {...agent, rev: '3', working: [], runs: [{...agent.runs[0], status: 'done', result: {text: 'Listo: **poleana-game** está en línea.'}}]};
-      await page.locator('.last-reply', {hasText: 'poleana-game está en línea'}).waitFor({timeout: 8000});
+      await label.filter({hasText: 'Disponible'}).waitFor({timeout: 8000});
       await orb.click();
       await page.waitForFunction(() => document.querySelector('.live-orb').dataset.state === 'listening', null, {timeout: 8000});
       await page.waitForTimeout(1500);
@@ -133,6 +182,19 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
       assert(/revisa los logs de poleana/i.test(spoken.text) && spoken.provider === 'codex', 'El dictado no se envió');
 
       await page.getByRole('button', {name:'Terminar conversación',exact:true}).click();
+
+      // Un viewport bajo (teclado móvil) conserva el compositor y la acción de enviar.
+      if (width === 390) {
+        await page.setViewportSize({width: 390, height: 480});
+        await page.getByRole('button', {name: 'Escribir', exact: true}).click();
+        await page.locator('.general-compose textarea').fill('Borrador con el teclado abierto');
+        await page.waitForTimeout(500);
+        const sendBox = await page.getByRole('button', {name: 'Enviar', exact: true}).boundingBox();
+        assert(sendBox && sendBox.y >= 0 && sendBox.y + sendBox.height <= 481, 'Enviar quedó fuera del viewport con el teclado abierto');
+        assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'El compositor desborda horizontalmente');
+        await page.getByRole('button', {name: 'Cerrar teclado'}).click();
+        await page.setViewportSize({width, height});
+      }
       await page.emulateMedia({reducedMotion: 'reduce'});
       await page.waitForTimeout(300);
       const still = await page.locator('.live-orb canvas').evaluate(el=>el.toDataURL());
@@ -145,6 +207,6 @@ const project = (name, running) => ({name, url: `https://${name}.devdj.lat`, run
       await context.close();
       console.log(`General agent OK at ${width}px`);
     }
-    console.log('GENERAL_BROWSER_OK (360, 390, 1440)');
+    console.log('GENERAL_BROWSER_OK (320, 360, 390, 768, 1440, paisaje 740x390): información bajo demanda, iconos, actividad, voz y teclado');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exit(1); });

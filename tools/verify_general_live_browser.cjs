@@ -1,7 +1,7 @@
 /* Voz nativa simulada + renderer real. Nunca envía tareas ni audio a producción. */
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || '/home/dv1/.npm/_npx/fd3bca3c548369c0/node_modules/playwright-core');
 const fs=require('node:fs');
-const base=process.env.CM_TEST_URL || 'http://127.0.0.1:4178', out=process.env.CM_ARTIFACTS || 'artifacts/general-live-next-20261017';
+const base=process.env.CM_TEST_URL || 'http://127.0.0.1:4178', out=process.env.CM_ARTIFACTS || 'artifacts/general-live-responsive-20261018';
 const assert=(ok,msg)=>{if(!ok)throw Error(msg);};
 (async()=>{
  fs.mkdirSync(out,{recursive:true});
@@ -56,6 +56,8 @@ const assert=(ok,msg)=>{if(!ok)throw Error(msg);};
   await page.locator('.live-transcript',{hasText:'Voz local'}).waitFor({timeout:8000});
   await page.getByRole('button',{name:'Terminar conversación',exact:true}).click();
   assert(posts.length===1,'Duplicó la frase al cambiar el motor de voz');
+  const hideResponse=page.getByRole('button',{name:'Ocultar respuesta',exact:true});
+  if(await hideResponse.isVisible())await hideResponse.click();
   const fence=spec=>'```cm-ui\n'+JSON.stringify(spec)+'\n```';
   agent={...agent,rev:'4',runs:[{...agent.runs[0],result:{text:'Te muestro el plano y los datos.\n'+[
    {type:'chart',title:'Consumo',labels:['A','B'],values:[3,8]},
@@ -63,7 +65,11 @@ const assert=(ok,msg)=>{if(!ok)throw Error(msg);};
    {type:'table',title:'Resumen',columns:['Nombre','Valor'],rows:[['A',3],['B',8]]},
    {type:'file',title:'Archivo SVG',project:'alpha',path:'public/plano.svg'}
   ].map(fence).join('\n')}}]};
-  await page.locator('.presentation-card',{hasText:'Consumo'}).waitFor({timeout:8000});
+  // Cambiar datos de una respuesta anterior no debe volver a desplegarla sin pedirla.
+  await page.waitForTimeout(1800);
+  assert(await page.locator('.general-response').count()===0,'Una respuesta anterior se abrió sola al cambiar el historial');
+  await page.getByRole('button',{name:'Ver respuesta',exact:true}).click();
+  await page.locator('.general-response .presentation-card',{hasText:'Consumo'}).waitFor({timeout:8000});
   assert(await page.locator('.presentation-card').count()===4,'No renderizó las cuatro presentaciones');
   await page.getByRole('button',{name:'Línea',exact:true}).click();
   assert(await page.locator('.presentation-chart polyline').count()===1,'El gráfico no responde');
@@ -81,7 +87,7 @@ const assert=(ok,msg)=>{if(!ok)throw Error(msg);};
   await page.keyboard.press('Escape');
   assert(await page.getByRole('dialog',{name:'Consumo',exact:true}).count()===0,'Escape no cierra la presentación');
   agent={...agent,rev:'5',runs:[{...agent.runs[0],status:'error',result:null,error:'Límite de uso',providers_tried:'codex,claude'}]};
-  await page.getByRole('heading',{name:'Ahora no hay conexión disponible'}).waitFor({timeout:8000});
+  await page.locator('.general-state-label',{hasText:'Ahora no hay conexión disponible'}).waitFor({timeout:8000});
   assert(errors.length===0,errors.join('\n'));
   await context.close();
   console.log('GENERAL_LIVE_OK: voz en vivo, envío inmediato, turnos, motor local, gráficos/HTML/tabla/archivo, aislamiento y agotamiento doble');

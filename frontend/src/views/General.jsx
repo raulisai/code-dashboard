@@ -1,20 +1,19 @@
 import React, {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
-import {ArrowUp, Bot, Box, Check, FilePen, FlaskConical, FolderOpen, GitBranch, Globe2, Hammer, Keyboard, MessagesSquare, MoreHorizontal, Package,
-  RotateCcw, Search, Server as ServerIcon, Square, SquareTerminal, Volume2, VolumeX, X} from 'lucide-react';
+import {Activity, ArrowUp, AudioLines, Bot, Box, Brain, Check, CircleAlert, CircleCheck, Clock3, FilePen, FlaskConical, FolderOpen, GitBranch, Globe2, Hammer, Keyboard, MessagesSquare, Mic, MoreHorizontal, Package,
+  RotateCcw, Search, Server as ServerIcon, ShieldCheck, Sparkles, Square, SquareTerminal, Volume2, VolumeX, X} from 'lucide-react';
 import {useApp} from '../App.jsx';
 import {api, navigate, post, useNow, usePolling} from '../lib.js';
 import {Spinner, toast} from '../ui.jsx';
 import {Approval} from '../workspace/Agent.jsx';
-import {GENERAL, activityRows, detectProject, duration, headline, speakable} from '../general.js';
+import {GENERAL, activityRows, detectProject, duration, presence, speakable} from '../general.js';
 import {voiceSettings} from '../voice.js';
 import Presentations from '../Presentations.jsx';
-import {presentationParts} from '../presentations.js';
 import Orb from '../Orb.jsx';
 import useOrbVoice from '../useOrbVoice.js';
 import '../general.css';
 
 const KIND_ICONS = {git: GitBranch, docker: Box, test: FlaskConical, web: Globe2, server: ServerIcon, package: Package, build: Hammer, edit: FilePen, read: Search, agent: Bot, terminal: SquareTerminal};
-const SUGGESTIONS = ['¿Cómo está el servidor?', '¿Qué proyectos están caídos?', 'Revisa los logs de poleana-game'];
+const STATE_ICONS = {...KIND_ICONS, idle: Sparkles, thinking: Brain, listening: Mic, speaking: AudioLines, transcribing: AudioLines, queue: Clock3, error: CircleAlert, approval: ShieldCheck, done: CircleCheck, stopping: Square};
 const SPEAK_KEY = 'cm-general-speak', VOICE_TASKS = 'cm-general-voice-tasks';
 const AUTO_SEND_SECONDS = .15;
 
@@ -28,7 +27,9 @@ export default function General() {
   const [speak, setSpeak] = useState(() => stored(SPEAK_KEY, 'on') === 'on'), [speaking, setSpeaking] = useState(false);
   const [pending, setPending] = useState(null), [typing, setTyping] = useState(false), [text, setText] = useState(() => stored('cm-draft-general', '')), [sending, setSending] = useState(false);
   const [conversation, setConversation] = useState(false), [voiceEngine, setVoiceEngine] = useState(() => stored('cm-general-voice-engine', 'auto'));
-  const [menu, setMenu] = useState(false), [sheet, setSheet] = useState(false), [arrival, setArrival] = useState('');
+  const [menu, setMenu] = useState(false), [sheet, setSheet] = useState(false), [details, setDetails] = useState(false), [responseOpen, setResponseOpen] = useState(false), [arrival, setArrival] = useState('');
+  const requestedTask = useRef(null), menuRef = useRef(null), inputRef = useRef(null), sheetInputRef = useRef(null);
+  const [viewport, setViewport] = useState(() => ({height: window.visualViewport?.height || window.innerHeight, keyboard: false}));
   const inFlight = useRef(false), transcript = useRef(null), continuous = useRef(false), waiting = useRef(false), voiceRef = useRef(null), resumeTimer = useRef(null), editing = useRef(false);
   continuous.current = conversation; editing.current = typing;
   const rev = useRef(''), previous = useRef({}), clock = useRef({}), orbRef = useRef(null), now = useNow(1000);
@@ -40,6 +41,26 @@ export default function General() {
   useEffect(() => { if (voice.error) { continuous.current = false; setConversation(false); } }, [voice.error]);
 
   useEffect(() => { try { text ? localStorage.setItem('cm-draft-general', text) : localStorage.removeItem('cm-draft-general'); } catch { /* sin almacenamiento */ } }, [text]);
+  useEffect(() => {
+    const update = () => setViewport({height: window.visualViewport?.height || window.innerHeight, keyboard: (window.visualViewport?.height || window.innerHeight) < window.innerHeight - 150});
+    window.visualViewport?.addEventListener('resize', update);
+    window.addEventListener('resize', update);
+    return () => { window.visualViewport?.removeEventListener('resize', update); window.removeEventListener('resize', update); };
+  }, []);
+  useEffect(() => {
+    if (!menu) return;
+    const outside = event => { if (!menuRef.current?.contains(event.target)) setMenu(false); };
+    const escape = event => { if (event.key === 'Escape') { setMenu(false); menuRef.current?.querySelector('button')?.focus(); } };
+    document.addEventListener('pointerdown', outside); document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape); };
+  }, [menu]);
+  useLayoutEffect(() => {
+    for (const input of [inputRef.current, sheetInputRef.current]) {
+      if (!input) continue;
+      input.style.height = 'auto';
+      input.style.height = `${Math.min(120, input.scrollHeight)}px`;
+    }
+  }, [text, typing, sheet, viewport.height]);
   useEffect(() => { if (sheet && transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight; }, [sheet]);
 
   const load = async () => {
@@ -49,6 +70,7 @@ export default function General() {
     rev.current = result.rev;
     for (const run of result.runs) {
       const before = previous.current[run.id];
+      if (run.status === 'done' && run.task_id === requestedTask.current) { setResponseOpen(true); requestedTask.current = null; }
       if (before !== 'done' && run.status === 'done' && waiting.current === run.task_id && voiceTasks().includes(run.task_id)) { waiting.current = false; if (!speak || voiceRef.current.phase !== 'idle' || !say(run.result?.text)) resumeListening(); }
       previous.current[run.id] = run.status;
     }
@@ -62,7 +84,7 @@ export default function General() {
   const running = latest && (latest.status === 'running' || latest.status === 'stopping');
   const nextProvider = data?.settings?.default_provider || state.settings?.default_provider || 'claude';
   const events = useMemo(() => latest?.events || [], [latest]);
-  const rows = useMemo(() => running ? activityRows(events, window.innerHeight < 680 ? 2 : window.innerHeight < 760 ? 3 : 4) : [], [events, running]);
+  const rows = useMemo(() => activityRows(events, 12), [events]);
   // Codex no manda horas por evento: se cronometra desde que el panel ve empezar cada comando.
   events.forEach((event, index) => {
     if (event.t !== 'tool' || event.t0) return;
@@ -73,13 +95,12 @@ export default function General() {
   const timed = row => row.t0 ? row : {...row, t0: clock.current[`${latest.id}:${row.first}`]?.t0 || null, t1: clock.current[`${latest.id}:${row.last}`]?.t1 || null};
   const names = useMemo(() => state.projects.map(project => project.name), [state.projects]);
   const project = useMemo(() => detectProject(events, names), [events, names]);
-  const online = state.projects.filter(item => item.running_containers).length;
-  const status = headline(running ? latest : (data?.queue.length ? null : latest?.status === 'done' ? null : latest), data?.queue.length || 0)
-    || {title: '¿Qué hacemos hoy?', subtitle: `${state.projects.length} proyectos · ${online} en línea${state.cpu ? ` · CPU ${Math.round(state.cpu.percent || 0)}%` : ''}`};
-  const typingLine = running ? ([...events].reverse().find(event => event.t === 'text' && !event.sub)?.text || '').split('\n').filter(Boolean).at(-1) : '';
   const reply = !running && latest?.status === 'done' ? latest.result?.text : '';
-  const hasVisuals = presentationParts(reply).some(part => part.spec);
-  const subtitle = rows.some(row => row.status === 'running' && (row.detail === status.subtitle || row.command === status.subtitle)) ? '' : status.subtitle;
+  const showResponse = responseOpen && !!reply;
+  const status = presence({run: latest, queued: data?.queue.length || 0, phase: voice.phase, speaking, sending: sending || !!pending,
+    connected: !!data, error: error || voice.error});
+  const StatusIcon = STATE_ICONS[status.kind] || Sparkles;
+  const typingLine = running ? ([...events].reverse().find(event => event.t === 'text' && !event.sub)?.text || '').split('\n').filter(Boolean).at(-1) : '';
 
   // La esfera de la barra viaja al centro y crece hasta su sitio (la posición sale de App.jsx).
   useLayoutEffect(() => {
@@ -122,6 +143,7 @@ export default function General() {
     inFlight.current = true; setSending(true);
     try {
       const result = await post('/api/agent/send', {project: GENERAL, chat_id: 'main', provider: nextProvider, text: value});
+      requestedTask.current = result.task?.id || null; setResponseOpen(false);
       if (viaVoice) waiting.current = result.task?.id || true;
       try { if (viaVoice && result.task?.id) sessionStorage.setItem(VOICE_TASKS, JSON.stringify([...voiceTasks().slice(-20), result.task.id])); } catch { /* el envío ya está confirmado */ }
       rev.current = ''; try { await load(); } catch (err) { setError(err.message); }
@@ -147,91 +169,121 @@ export default function General() {
 
   const orbState = voice.phase === 'listening' ? 'listening' : voice.phase !== 'idle' || sending || pending ? 'thinking' : speaking ? 'speaking' : running ? 'working' : busy || waiting.current ? 'thinking' : 'idle';
   const coarse = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
-  const write = !typing && voice.phase === 'idle' && <button className="write-btn" onClick={() => { endConversation(); setTyping(true); }}><Keyboard size={15}/>Escribir</button>;
-  return <div className={`general ${arrival ? `arrive-${arrival}` : ''} ${rows.length ? 'has-activity' : ''} ${hasVisuals ? 'has-presentations' : ''}`}>
+  const openTyping = () => { endConversation(); setTyping(true); };
+  const openSheet = () => { setMenu(false); endConversation(); setSheet(true); };
+  return <div className={`general ${arrival ? `arrive-${arrival}` : ''} ${showResponse ? 'has-response' : ''} ${typing ? 'is-typing' : ''} ${viewport.keyboard ? 'keyboard-open' : ''}`}
+    style={{'--view-height': `${viewport.height}px`}}>
     <header className="general-top">
-      <div className="general-identity"><span className="dot live"/><span>Agente general<small>Tu espacio para pensar y hacer</small></span></div>
+      <h1 className="general-identity"><span className="dot live"/>Agente general</h1>
       <span className="grow"/>
-      <div className="general-menu">
-        <button className="round-btn" onClick={() => setMenu(!menu)} aria-label="Más opciones" aria-expanded={menu}><MoreHorizontal size={20}/></button>
-        {menu && <div className="general-popover" role="menu">
-          <button role="menuitem" onClick={() => { setMenu(false); endConversation(); setSheet(true); }}><MessagesSquare size={16}/>Ver conversación</button>
-          {project && <button role="menuitem" onClick={() => navigate(`/p/${project}`)}><FolderOpen size={16}/>Abrir {project}</button>}
-          <button role="menuitem" onClick={toggleSpeak}>{speak ? <Volume2 size={16}/> : <VolumeX size={16}/>}Leer respuestas en voz alta: {speak ? 'sí' : 'no'}</button>
-          <button role="menuitem" onClick={() => { endConversation(); const value = voiceEngine === 'auto' ? 'local' : voiceEngine === 'local' ? 'local-precise' : 'auto'; setVoiceEngine(value); remember('cm-general-voice-engine', value); }}>Voz: {voiceEngine === 'local' ? 'local rápida' : voiceEngine === 'local-precise' ? 'local precisa' : 'rápida del navegador + respaldo local'}</button>
+      <button className="round-btn" onClick={openSheet} aria-label="Ver conversación" title="Ver conversación"><MessagesSquare size={19}/></button>
+      <div className="general-menu" ref={menuRef}>
+        <button className="round-btn" onClick={() => setMenu(!menu)} aria-label="Más opciones" aria-expanded={menu} aria-controls="general-options"><MoreHorizontal size={20}/></button>
+        {menu && <div className="general-popover" id="general-options">
+          <button onClick={() => { setMenu(false); setDetails(true); }}><Activity size={16}/>Ver actividad</button>
+          <button onClick={() => navigate('/projects')}><FolderOpen size={16}/>Ver proyectos</button>
+          <button onClick={toggleSpeak}>{speak ? <Volume2 size={16}/> : <VolumeX size={16}/>}Leer respuestas en voz alta: {speak ? 'sí' : 'no'}</button>
+          <button onClick={() => { endConversation(); const value = voiceEngine === 'auto' ? 'local' : voiceEngine === 'local' ? 'local-precise' : 'auto'; setVoiceEngine(value); remember('cm-general-voice-engine', value); }}>Voz: {voiceEngine === 'local' ? 'local rápida' : voiceEngine === 'local-precise' ? 'local precisa' : 'rápida del navegador + respaldo local'}</button>
           <small className="voice-privacy">La voz rápida puede usar el servicio del navegador. Las opciones locales procesan el audio en este servidor.</small>
-          <button role="menuitem" onClick={reset} disabled={busy}><RotateCcw size={16}/>Conversación nueva</button>
+          <button onClick={reset} disabled={busy}><RotateCcw size={16}/>Conversación nueva</button>
         </div>}
       </div>
     </header>
 
-    <section className="general-status" aria-live="polite">
-      <h1>{status.title}</h1>
-      {project && running && <button className="general-project" onClick={() => navigate(`/p/${project}`)}>{project}</button>}
-      {subtitle && <p>{subtitle}</p>}
-    </section>
-
-    {rows.length > 0 && <section className="general-activity" aria-label="Actividad en tiempo real">
-      <div className="activity-head"><span className="dot live"/>Actividad en tiempo real<span className="line"/>
-        <button className="activity-stop" onClick={stopRun} disabled={latest.status === 'stopping'}><Square size={11} fill="currentColor"/>Detener</button></div>
-      {rows.map((row, index) => { const Icon = KIND_ICONS[row.kind] || SquareTerminal; return <div className={`activity-row ${row.status}`} key={index}>
-        <span className="activity-state">{row.status === 'running' ? <span className="ring"/> : row.status === 'error' ? <X size={13}/> : <Check size={13}/>}</span>
-        <Icon size={20} strokeWidth={1.6} className="activity-icon"/>
-        <div className="activity-text"><code>{row.command || row.title}</code><small>{row.detail}</small></div>
-        <span className="activity-time">{duration(timed(row), now / 1000)}</span>
-      </div>; })}
-      <div className="activity-typing"><SquareTerminal size={15}/><span>{typingLine ? typingLine.slice(0, 90) : 'Trabajando…'}</span><i className="caret"/></div>
-    </section>}
-
     {(latest?.approvals || []).map(approval => <div className="general-approval" key={approval.id}><Approval approval={approval} onAnswer={answer}/></div>)}
 
     <div className="general-stage">
-      <button ref={orbRef} className={`live-orb ${arrival === 'launch' ? 'launch' : ''}`} data-state={orbState} style={{'--level': voice.level}} onClick={tapOrb}
-        onAnimationEnd={event => { if (event.target === event.currentTarget) setArrival(''); }}
-        aria-label={voice.phase === 'listening' ? 'Terminar de hablar' : 'Hablar con el agente general'}>
-        <Orb state={orbState} level={voice.level}/>
-      </button>
+      <div className="general-orbit" data-mode={orbState}>
+        <button ref={orbRef} className={`live-orb ${arrival === 'launch' ? 'launch' : ''}`} data-state={orbState} onClick={tapOrb}
+          onAnimationEnd={event => { if (event.target === event.currentTarget) setArrival(''); }}
+          aria-label={voice.phase === 'listening' ? 'Terminar de hablar' : 'Hablar con el agente general'}>
+          <Orb state={orbState} level={voice.level}/>
+        </button>
+        <span className="orb-state-icon" key={status.kind} aria-hidden="true"><StatusIcon size={21} strokeWidth={1.6}/></span>
+      </div>
+      <div className="general-status" data-kind={status.kind} role="status" aria-live="polite" aria-atomic="true">
+        <span className="presence-dot" aria-hidden="true"/><span className="general-state-label">{status.title}</span>
+      </div>
+      {(voice.phase === 'listening' || voice.phase === 'transcribing') && <div className="live-transcript">
+        <p>{voice.interim || (voice.phase === 'listening' ? (voice.engine === 'browser' ? 'Transcripción en vivo' : 'Voz local · termina al hacer una pausa') : '')}</p>
+      </div>}
     </div>
 
-    <div className="general-caption" aria-live="polite">
-      {latest?.prompt && !pending && <p className="last-question">{latest.prompt}</p>}
-      {pending ? <div className="pending-message"><p>«{pending.text}»</p>
-          <div className="pending-actions"><small>Enviando tu mensaje{busy ? ' (en cola)' : ''}…</small><i className="countdown" style={{'--secs': `${AUTO_SEND_SECONDS}s`}}/>
-            <button className="btn small" onClick={() => { setText(pending.text); setPending(null); setTyping(true); }}>Editar</button>
-            <button className="btn small" onClick={() => setPending(null)}>Cancelar</button></div></div>
-        : voice.phase === 'listening' ? <div className="live-transcript"><p className="hint">Te escucho… <b>{Math.floor(voice.elapsed)}s</b></p><p>{voice.interim || (voice.engine === 'browser' ? 'Transcripción en vivo · navegador' : 'Voz local · termina al hacer una pausa')}</p></div>
-        : voice.phase === 'opening' ? <p className="hint">Abriendo el micrófono…</p>
-        : voice.phase === 'transcribing' ? <p className="hint"><Spinner size={13}/> Transcribiendo…</p>
-        : voice.error ? <div className="caption-line"><p className="hint error">{voice.error}</p>{write}</div>
-        : speaking ? <p className="hint">Hablando… toca la esfera para interrumpir</p>
-        : reply ? <div className="last-reply"><Presentations text={reply}/><div className="caption-line"><button className="link-btn" onClick={() => setSheet(true)}>Ver conversación</button>{write}</div></div>
-        : <div className="caption-line"><p className="hint">Toca la esfera para hablar</p>{write}</div>}
-      {conversation && <button className="voice-end" onClick={endConversation}>Terminar conversación</button>}
-      {running && typingLine && !rows.length && <p className="live-answer">{typingLine}</p>}
+    {pending && <div className="pending-message"><p>«{pending.text}»</p>
+      <div className="pending-actions"><button className="btn small" onClick={() => { setText(pending.text); setPending(null); openTyping(); }}>Editar</button>
+        <button className="btn small" onClick={() => setPending(null)}>Cancelar</button></div></div>}
+
+    {showResponse && <section className="general-response" aria-label="Respuesta del agente general">
+      <header><span><CircleCheck size={16}/>Tu respuesta</span><button className="round-btn" onClick={() => setResponseOpen(false)} aria-label="Ocultar respuesta" title="Ocultar respuesta"><X size={17}/></button></header>
+      <div className="response-content"><Presentations text={reply}/></div>
+    </section>}
+
+    {(error || voice.error || latest?.status === 'error' && !busy) && <div className="general-error" role="alert">
+      <p>{error || voice.error || status.subtitle}</p>
       {latest?.status === 'error' && !busy && <button className="btn small" onClick={() => send(latest.prompt)}>Reintentar con una conexión disponible</button>}
-      {!data && !error && <p className="hint"><Spinner size={13}/> Conectando…</p>}
-      {error && <p className="hint error">{error}</p>}
-      {data && !data.runs.length && !data.queue.length && !pending && voice.phase === 'idle' && <div className="general-suggestions">
-        {SUGGESTIONS.map(item => <button key={item} onClick={() => send(item)}>{item}</button>)}</div>}
+    </div>}
+
+    <div className="general-actions" aria-label="Controles del agente general">
+      <button className={`general-action ${conversation ? 'selected' : ''}`} onClick={conversation ? endConversation : tapOrb}
+        aria-label={conversation ? 'Terminar conversación' : 'Hablar'} title={conversation ? 'Terminar conversación' : 'Hablar'} disabled={!conversation && voice.phase !== 'idle'}>
+        {conversation ? <Square size={19}/> : <Mic size={20}/>}<span>{conversation ? 'Terminar' : 'Hablar'}</span>
+      </button>
+      <button className={`general-action ${typing ? 'selected' : ''}`} onClick={typing ? () => setTyping(false) : openTyping} aria-label="Escribir" aria-expanded={typing} aria-controls="general-compose" title="Escribir"><Keyboard size={20}/><span>Escribir</span></button>
+      <button className="general-action" onClick={() => setDetails(true)} aria-label="Ver actividad" title="Ver actividad"><Activity size={20}/><span>Actividad</span>{running && <i className="action-live"/>}</button>
+      {reply && <button className={`general-action ${showResponse ? 'selected' : ''}`} onClick={() => setResponseOpen(!responseOpen)} aria-label="Ver respuesta" aria-expanded={showResponse} title="Ver respuesta"><MessagesSquare size={20}/><span>Respuesta</span></button>}
+      {running && <button className="general-action stop-action" onClick={stopRun} disabled={latest.status === 'stopping'} aria-label="Detener tarea" title="Detener tarea"><Square size={18}/><span>Detener</span></button>}
     </div>
 
-    {typing && <form className="general-compose" onSubmit={submitTyped}>
-      <textarea autoFocus rows={1} value={text} onChange={event => setText(event.target.value)} placeholder="Cuéntame qué hacemos…"
+    {typing && <form className="general-compose" id="general-compose" onSubmit={submitTyped}>
+      <textarea ref={inputRef} aria-label="Mensaje al agente general" autoFocus rows={1} value={text} onChange={event => setText(event.target.value)} placeholder="Escribe tu mensaje…"
         onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !coarse) { event.preventDefault(); submitTyped(); } if (event.key === 'Escape') setTyping(false); }}/>
       <button type="button" className="round-btn" onClick={() => setTyping(false)} aria-label="Cerrar teclado"><X size={18}/></button>
       <button className="send-btn" disabled={sending || !text.trim()} aria-label="Enviar">{sending ? <Spinner/> : <ArrowUp size={19}/>}</button>
     </form>}
 
-    {sheet && <div className="general-sheet" role="dialog" aria-modal="true" aria-label="Conversación con el agente general">
+    {details && <AgentDialog className="general-details" label="Actividad del agente general" onClose={() => setDetails(false)}>
+      <div className="sheet-head"><b>Actividad del agente general</b><span className="grow"/><button className="round-btn" onClick={() => setDetails(false)} aria-label="Cerrar actividad"><X size={18}/></button></div>
+      <div className="general-detail-content">
+        <p className="detail-status"><StatusIcon size={18}/>{status.title}</p>
+        {project && <button className="general-project" onClick={() => navigate(`/p/${project}`)}><FolderOpen size={16}/>{project}</button>}
+        {latest?.prompt && <p className="detail-question">{latest.prompt}</p>}
+        {!!rows.length && <section className="general-activity" aria-label="Actividad en tiempo real">
+          {rows.map((row, index) => { const Icon = KIND_ICONS[row.kind] || SquareTerminal; return <div className={`activity-row ${row.status}`} key={index}>
+            <span className="activity-state">{row.status === 'running' ? <span className="ring"/> : row.status === 'error' ? <X size={13}/> : <Check size={13}/>}</span>
+            <Icon size={20} strokeWidth={1.6} className="activity-icon"/>
+            <div className="activity-text"><code>{row.command || row.title}</code><small>{row.detail}</small></div>
+            <span className="activity-time">{duration(timed(row), now / 1000)}</span>
+          </div>; })}
+          {typingLine && <p className="detail-text">{typingLine}</p>}
+        </section>}
+        {!rows.length && <p className="detail-empty">{running ? 'Preparando la tarea…' : 'Sin herramientas ejecutadas en esta conversación.'}</p>}
+        <dl className="detail-server"><div><dt>Proyectos</dt><dd>{state.projects.length}</dd></div><div><dt>En línea</dt><dd>{state.projects.filter(item => item.running_containers).length}</dd></div>
+          {state.cpu && <div><dt>CPU</dt><dd>{Math.round(state.cpu.percent || 0)}%</dd></div>}</dl>
+        {running && <button className="btn danger-soft" onClick={stopRun} disabled={latest.status === 'stopping'}><Square size={14}/>Detener tarea</button>}
+      </div>
+    </AgentDialog>}
+
+    {sheet && <AgentDialog className="general-sheet" label="Conversación con el agente general" onClose={() => setSheet(false)}>
       <div className="sheet-head"><b>Agente general</b><span className="grow"/><button className="round-btn" onClick={() => setSheet(false)} aria-label="Cerrar"><X size={18}/></button></div>
-      <div className="general-transcript" ref={transcript}>{(data?.runs || []).map(run => <React.Fragment key={run.id}>
+      <div className="general-transcript" ref={transcript}>{!(data?.runs || []).length && <p className="detail-empty">Tu conversación aparecerá aquí.</p>}{(data?.runs || []).map(run => <React.Fragment key={run.id}>
         <div className="conversation-message from-you"><small>Tú</small><p>{run.prompt}</p></div>
         <div className="conversation-message"><small>Agente general</small><Presentations text={run.result?.text || (run.status === 'running' ? 'Estoy en ello…' : run.error || 'Conversación finalizada.')}/></div>
       </React.Fragment>)}</div>
       <form className="general-compose sheet-compose" onSubmit={submitTyped}>
-        <textarea aria-label="Mensaje al agente general" value={text} onChange={event => setText(event.target.value)} placeholder="Seguimos conversando…" rows={2}/>
+        <textarea ref={sheetInputRef} aria-label="Mensaje al agente general" value={text} onChange={event => setText(event.target.value)} placeholder="Seguimos conversando…" rows={1}/>
         <button className="send-btn" disabled={sending || !text.trim()} aria-label="Enviar mensaje">{sending ? <Spinner/> : <ArrowUp size={19}/>}</button>
       </form>
-    </div>}
+    </AgentDialog>}
   </div>;
+}
+
+function AgentDialog({className, label, onClose, children}) {
+  const dialog = useRef(null);
+  useEffect(() => {
+    const element = dialog.current, overflow = document.body.style.overflow;
+    element.showModal(); document.body.style.overflow = 'hidden';
+    return () => { if (element.open) element.close(); document.body.style.overflow = overflow; };
+  }, []);
+  return <dialog ref={dialog} className={className} aria-label={label} onCancel={event => { event.preventDefault(); onClose(); }}
+    onClick={event => { if (event.target === event.currentTarget) onClose(); }}>{children}</dialog>;
 }

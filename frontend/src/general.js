@@ -104,6 +104,28 @@ export function headline(run, queued = 0) {
   return null;
 }
 
+/** Estado compacto de la esfera: solo actividad real, sin resumir proyectos ni comandos. */
+export function presence({run, queued = 0, phase = 'idle', speaking = false, sending = false, connected = true, error = ''} = {}) {
+  if (error) return {kind: 'error', title: 'Necesito tu atención', subtitle: error};
+  if (phase === 'opening') return {kind: 'listening', title: 'Abriendo micrófono'};
+  if (phase === 'listening') return {kind: 'listening', title: 'Te escucho'};
+  if (phase === 'transcribing') return {kind: 'transcribing', title: 'Transcribiendo'};
+  if (sending) return {kind: 'thinking', title: 'Enviando'};
+  if (speaking) return {kind: 'speaking', title: 'Hablando'};
+  if (!connected) return {kind: 'thinking', title: 'Conectando'};
+  if (run?.status === 'running') {
+    if ((run.approvals || []).length) return {kind: 'approval', title: 'Esperando tu permiso'};
+    const tool = [...(run.events || [])].reverse().find(event => event.t === 'tool' && event.name !== 'TodoWrite' && event.status === 'running');
+    if (tool) { const info = classify(tool); return {kind: info.kind, title: info.title}; }
+    return {kind: 'thinking', title: run.events?.at(-1)?.t === 'text' ? 'Respondiendo' : 'Pensando'};
+  }
+  if (run?.status === 'stopping') return {kind: 'stopping', title: 'Deteniendo'};
+  if (queued) return {kind: 'queue', title: 'En cola'};
+  if (run?.status === 'error') return {kind: 'error', ...headline(run)};
+  if (run?.status === 'stopped') return {kind: 'stopping', title: 'Detenido'};
+  return {kind: 'idle', title: 'Disponible'};
+}
+
 /** Texto apto para voz: sin Markdown, código ni enlaces largos. */
 export function speakable(text, limit = 700) {
   const plain = String(text || '')
