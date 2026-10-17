@@ -4,9 +4,14 @@
 
 Última actualización anterior: 2026-10-18, 00:05 Europe/Berlin. Autor: Codex (agente general: voz, partículas, continuidad y presentaciones).
 
-Última actualización: 2026-10-18 Europe/Berlin. Codex: Proyectos compacto y revisión responsive.
+Última actualización: 2026-10-18, 00:19 Europe/Berlin. Autor: Codex (chat de proyecto compacto).
 
 ## 0. Estado en una línea
+
+**Chat de proyecto compacto (18 octubre, Codex):** cabecera de 44 px con nombre
+y menú «…» para chats/proveedor/reinicio; micrófono de solo icono y modelo/esfuerzo
+en la misma fila inferior. Mantiene texto legible, dictado, adjuntos y autosize.
+Publicado con Compose; dashboard/speech healthy, HTTPS 200 y API anónima 401.
 
 **Proyectos compacto publicado (18 octubre):** miniatura de 64 px, estado de
 contenedores, servicios activos, agentes trabajando/cola y siete herramientas
@@ -227,6 +232,12 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Chat ergonómico (18 octubre)
+
+- Falta valorar comodidad con teclado y voz en el teléfono físico del usuario.
+- Pruebas de navegador con API simulada: no consumen créditos ni alteran chats reales.
+- Respaldo previo: `/srv/platform/backups/codex-dashboard-auto/20261017T221650.504518Z/`.
 
 ### Proyectos compacto y pantallas responsive (18 octubre)
 
@@ -550,6 +561,16 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Chat ergonómico (18 octubre, Codex)
+
+- `Agent.jsx`: controles de chat y proveedor agrupados en details nativo, cerrado
+  inicialmente; cierre por Escape/fuera con foco restaurado al usar Escape.
+- `style.css`: cabecera 44 px, panel superpuesto, compositor reducido, micrófono
+  sin etiqueta visual (con nombre accesible), modelo y esfuerzo junto al micrófono.
+- Conserva borradores por chat, modelo/esfuerzo, adjuntos y altura automática.
+- Build Vite y 14 pruebas frontend correctas; navegador de chats y eliminación/
+  traspaso verificados en 360/390/768/1440 px, sin mutaciones reales.
 
 ### Proyectos compacto y pantallas responsive (18 octubre)
 

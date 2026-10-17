@@ -115,8 +115,13 @@ ya visitados pueden abrirse sin conexión; ejecutar acciones requiere conexión.
 
 ## Modelo y esfuerzo por chat de proyecto
 
-En **Proyecto → Agente**, debajo del mensaje, pulsa **Escoger modelo**. Abre un
-panel con modelos y esfuerzo de razonamiento; selecciona las opciones y pulsa
+En **Proyecto → Agente**, junto al icono del micrófono, pulsa **Escoger modelo**.
+La cabecera muestra el nombre del chat; el botón **…** reúne cambiar/crear/renombrar/
+eliminar chats, cambiar de agente y reiniciar el contexto. Se cierra tocando fuera
+o pulsando Escape. El campo de escritura crece con el texto y vuelve a una línea
+al enviar o borrar.
+
+El selector abre un panel con modelos y esfuerzo de razonamiento; elige y pulsa
 **Listo**. No hay campo para escribir identificadores. **Predeterminado** sigue
 el modelo de Ajustes; **Automático** conserva el esfuerzo que resuelve el CLI.
 Solo se ofrecen los niveles compatibles con el modelo y se limpia una selección
