@@ -541,6 +541,9 @@ no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyec
   dictado, envío y recuperación de borradores. Mantiene límite de 220 px.
 - `verify_chats_browser.cjs`: comprueba crecimiento, límite y reducción al borrar
   y después de enviar un borrador largo recuperado desde otro chat.
+- Navegador sobre la web publicada OK a 360/390/768/1440 px: crecimiento,
+  borrado, cambio de chat, recuperación de borrador y reducción tras enviar.
+  Evidencias: `artifacts/composer-20261018/`.
 - 14 tests frontend y build Vite OK. Reconstruido con
   `docker compose up -d --build`; Inicio y /health HTTPS 200; servicios healthy.
 

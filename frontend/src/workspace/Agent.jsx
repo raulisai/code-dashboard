@@ -95,6 +95,13 @@ function ChatConversation({project, active, chatId, attachments = true}) {
   const storedProvider = providerKey(name, chatId);
   const [provider, setProvider] = useState(() => { try { return localStorage.getItem(storedProvider) || null; } catch { return null; } });
   const [text, setText] = useState(() => { try { return localStorage.getItem(draftKey(name, chatId)) || ''; } catch { return ''; } });
+  const composerInput = useRef(null);
+  useLayoutEffect(() => {
+    const input = composerInput.current;
+    if (!input) return;
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(220, input.scrollHeight)}px`;
+  }, [text, active]);
   const modelKey = `${storedProvider}-models`;
   const [models, setModels] = useState(() => { try { return JSON.parse(localStorage.getItem(modelKey) || '{}') || {}; } catch { return {}; } });
   const attachmentKey = `${draftKey(name, chatId)}-files`;
@@ -225,9 +232,8 @@ function ChatConversation({project, active, chatId, attachments = true}) {
     <form className="composer" onSubmit={send}>
       {files.length > 0 && <div className="attachments">{files.map(path => <span key={path} className="chip">{isImage(path) ? <img className="attachment-thumb" src={rawFile(name, path)} alt=""/> : <Paperclip size={12}/>}<a href={rawFile(name, path)} target="_blank" rel="noreferrer">{path.split('/').pop()}</a><button type="button" onClick={() => setFiles(list => list.filter(x => x !== path))} aria-label="Quitar"><X size={12}/></button></span>)}</div>}
       <div className="composer-box">
-        <textarea value={text} onChange={e => setText(e.target.value)} rows={1} placeholder={`Pide algo a ${providerLabel(nextProvider)}…`}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !coarse) { e.preventDefault(); send(); } }}
-          onInput={e => { e.target.style.height = 'auto'; e.target.style.height = `${Math.min(220, e.target.scrollHeight)}px`; }}/>
+        <textarea ref={composerInput} value={text} onChange={e => setText(e.target.value)} rows={1} placeholder={`Pide algo a ${providerLabel(nextProvider)}…`}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !coarse) { e.preventDefault(); send(); } }}/>
         {name !== '_general' && <ModelPicker provider={nextProvider} model={selectedModel} effort={selectedEffort} onChange={chooseModel} configured={data?.settings?.[`${nextProvider}_model`]}/>}
         <div className="composer-tools">
           {attachments && <label className="icon-btn" title="Adjuntar archivo o imagen" aria-label="Adjuntar">{uploading ? <Spinner/> : <Paperclip size={18}/>}<input type="file" multiple hidden onChange={upload}/></label>}
