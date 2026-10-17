@@ -340,11 +340,10 @@ body { background: radial-gradient(ellipse at 50% 0, #0d213029, transparent 65%)
 }
 .projects-carousel .project-online { margin-right: -72px; }
 .deploy .block-head { flex-wrap: wrap; }
-.ws-top .icon-btn, .ws-top .btn.run { flex-shrink: 0; }
+.ws-top .icon-btn { flex-shrink: 0; }
 .ws-title small { overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 699px) {
   .ws-top .icon-btn { min-width: 40px; min-height: 44px; }
-  .ws-top .btn.run { min-height: 44px; }
   .ws-tabs button { min-height: 48px; }
   .ws-top > .monogram { display: none; }
 }

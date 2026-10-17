@@ -67,7 +67,6 @@ export default function Workspace({name}) {
       <a className="icon-btn" href={project.url} target="_blank" rel="noreferrer" aria-label="Abrir la web"><ExternalLink size={18}/></a>
       {desktop && !project.protected && <button className="icon-btn danger" onClick={() => setDeleting(true)} aria-label="Eliminar proyecto" title="Eliminar proyecto"><Trash2 size={17}/></button>}
       {desktop && <button className="icon-btn" onClick={toggleSide} aria-label={side ? 'Ocultar vista previa' : 'Mostrar vista previa'} title="Vista previa lateral">{side ? <PanelRightClose size={18}/> : <PanelRightOpen size={18}/>}</button>}
-      <button className="btn run" onClick={run}><Rocket size={16}/><span>Desplegar</span></button>
     </header>
     <div className="ws-body">
       {desktop && <nav className="ws-rail">{TOOLS.map(tool => <button key={tool.key} className={tab === tool.key ? 'on' : ''} onClick={() => open(tool.key)} title={tool.label}>

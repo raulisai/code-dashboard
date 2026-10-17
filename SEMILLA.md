@@ -4,9 +4,14 @@
 
 Última actualización anterior: 2026-10-18, 00:05 Europe/Berlin. Autor: Codex (agente general: voz, partículas, continuidad y presentaciones).
 
-Última actualización: 2026-10-18, 01:14 Europe/Berlin. Autor: Claude (cierre del agente general «vivo», tras el límite de Codex).
+Última actualización: 2026-10-18, Europe/Berlin. Autor: Claude (quitar el botón verde «Desplegar» de la cabecera del proyecto, reintento tras el límite de Codex).
 
 ## 0. Estado en una línea
+
+**Cabecera del proyecto sin botón verde «Desplegar» (18 octubre, Claude).** Lo pidió
+el usuario; Codex falló por límite de uso y Claude lo reintentó. Desplegar sigue en
+la herramienta «Desplegar» (barra lateral en escritorio, «Más» en el celular) y en
+«Desplegar ahora» de Vista previa. Publicado; `WS_HEADER_OK` 360/390/1440 en la URL real.
 
 **Agente general «vivo» terminado y publicado (18 octubre, Claude).** Codex lo
 implementó pero agotó su cupo verificando (run `20261017-221813-a55e72`, commit
@@ -245,6 +250,11 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Cabecera del proyecto (18 octubre)
+
+- Decisión del usuario: **no volver a poner el botón verde «Desplegar» en la cabecera**
+  del proyecto. Rollback: imagen `codex-dashboard:before-no-header-deploy-20261018`.
 
 ### Agente general «vivo» (cierre 18 octubre)
 
@@ -583,6 +593,15 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Quitar «Desplegar» de la cabecera del proyecto
+
+- `views/Workspace.jsx`: fuera el `btn run` de `.ws-top` (la función `run` sigue para
+  Vista previa); CSS `.btn.run` eliminado de `style.css` y `neon.css`.
+- Build + 15 pruebas frontend OK. Desplegado con `docker compose up -d --build`:
+  healthy, `/`, `/p/codex-dashboard`, `/health` 200, API sin sesión 401. Chromium con
+  API simulada en la URL real (360/390/1440): sin botón en la cabecera, «Desplegar
+  cambios» accesible desde «Más»/barra lateral, sin desbordamiento ni errores.
 
 ### Cierre del agente general «vivo» (Claude, 18 octubre)
 

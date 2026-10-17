@@ -293,8 +293,6 @@ svg { flex-shrink: 0; }
 .ws-title { min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
 .ws-title b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .98rem; }
 .ws-title small { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: .75rem; white-space: nowrap; }
-.btn.run { background: var(--ok); border-color: var(--ok); color: #04210b; min-height: 36px; padding: 6px 12px; }
-.btn.run:hover { background: #56d364 !important; }
 .ws-body { flex: 1; min-height: 0; display: flex; }
 .ws-main { flex: 1; min-width: 0; position: relative; display: flex; }
 .ws-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
