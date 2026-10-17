@@ -2,6 +2,7 @@ import React, {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'reac
 import {AlertTriangle, ArrowDown, ArrowUp, Bot, Brain, Check, CheckCircle2, ChevronDown, Circle, CircleDot, Clock3, FileCode2, FilePen, FilePlus2, FileText,
   GitCommitHorizontal, Globe2, ListChecks, Paperclip, RotateCcw, Search, ShieldCheck, ShieldQuestion, Square, SquareTerminal, Trash2, Wrench, X} from 'lucide-react';
 import {api, duration, navigate, post, providerLabel, relPath, setQuery, useLocation, useNow, usePolling} from '../lib.js';
+import ModelPicker from './ModelPicker.jsx';
 import Markdown from '../Markdown.jsx';
 import {insertDictation} from '../voice.js';
 import {Confirm, ProviderMark, ProviderPicker, Spinner, toast, VoiceButton} from '../ui.jsx';
@@ -124,9 +125,9 @@ function ChatConversation({project, active, chatId, attachments = true}) {
 
   const nextProvider = provider || data?.runs.at(-1)?.provider || data?.settings?.default_provider || 'claude';
   const selectedModel = models[nextProvider] || '';
-  const modelOptions = [...new Set([data?.settings?.[`${nextProvider}_model`], ...(nextProvider === 'claude' ? ['opus', 'sonnet', 'haiku'] : []), ...(data?.runs || []).filter(run => run.provider === nextProvider).map(run => run.model)].filter(Boolean))];
-  const chooseModel = value => {
-    const next = {...models, [nextProvider]: value}; setModels(next);
+  const selectedEffort = models[`${nextProvider}-effort`] || '';
+  const chooseModel = (value, effort = '') => {
+    const next = {...models, [nextProvider]: value, [`${nextProvider}-effort`]: effort}; setModels(next);
     try { localStorage.setItem(modelKey, JSON.stringify(next)); } catch { /* sin almacenamiento */ }
   };
   const chooseProvider = value => { setProvider(value); try { localStorage.setItem(storedProvider, value); } catch { /* sin almacenamiento */ } };
@@ -156,7 +157,7 @@ function ChatConversation({project, active, chatId, attachments = true}) {
     if (files.length) message += `\n\nArchivos adjuntos (rutas dentro del proyecto):\n${files.map(path => `- ${path}`).join('\n')}`;
     setSending(true);
     try {
-      await post('/api/agent/send', {project: name, chat_id: chatId, provider: nextProvider, model: selectedModel, text: message.trim()});
+      await post('/api/agent/send', {project: name, chat_id: chatId, provider: nextProvider, model: selectedModel, effort: selectedEffort, text: message.trim()});
       try { localStorage.removeItem(draftKey(name, chatId)); localStorage.removeItem(attachmentKey); } catch { /* sin almacenamiento */ }
       setText(''); setFiles([]); stick.current = true;
       rev.current = '';
@@ -207,15 +208,6 @@ function ChatConversation({project, active, chatId, attachments = true}) {
       {hasContext && <button className="btn small" onClick={reset} disabled={!!busy} title="Reiniciar el contexto de este chat para Claude y Codex"><RotateCcw size={14}/>Reiniciar</button>}
     </div>
 
-    {name !== '_general' && <div className="project-model-bar">
-      <label htmlFor={`model-${chatId}`}>Modelo de {providerLabel(nextProvider)}</label>
-      <input id={`model-${chatId}`} className="input" list={`models-${chatId}`} value={selectedModel} onChange={event => chooseModel(event.target.value)} maxLength={80}
-        placeholder={data?.settings?.[`${nextProvider}_model`] || 'Predeterminado'} aria-label="Modelo del agente" autoComplete="off" spellCheck={false}/>
-      <datalist id={`models-${chatId}`}>{modelOptions.map(value => <option key={value} value={value}/>)}</datalist>
-      {selectedModel && <button className="btn small" onClick={() => chooseModel('')}>Predeterminado</button>}
-      <small>Para tu próximo mensaje</small>
-    </div>}
-
     <div className="timeline" ref={scroller} onScroll={onScroll}>
       {!data ? <div className="timeline-loading"><Spinner/> Cargando conversación…</div>
         : !data.runs.length && !data.queue.length ? <Intro project={name} provider={nextProvider} onPick={setText}/>
@@ -236,6 +228,7 @@ function ChatConversation({project, active, chatId, attachments = true}) {
         <textarea value={text} onChange={e => setText(e.target.value)} rows={1} placeholder={`Pide algo a ${providerLabel(nextProvider)}…`}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !coarse) { e.preventDefault(); send(); } }}
           onInput={e => { e.target.style.height = 'auto'; e.target.style.height = `${Math.min(220, e.target.scrollHeight)}px`; }}/>
+        {name !== '_general' && <ModelPicker provider={nextProvider} model={selectedModel} effort={selectedEffort} onChange={chooseModel} configured={data?.settings?.[`${nextProvider}_model`]}/>}
         <div className="composer-tools">
           {attachments && <label className="icon-btn" title="Adjuntar archivo o imagen" aria-label="Adjuntar">{uploading ? <Spinner/> : <Paperclip size={18}/>}<input type="file" multiple hidden onChange={upload}/></label>}
           <VoiceButton active={active} disabled={sending || uploading} onText={value => setText(current => insertDictation(current, value))}

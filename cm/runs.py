@@ -259,6 +259,7 @@ def start_run(task):
             # proyectos no es un repositorio: el agente general hace commit en cada proyecto que cambie.
             'versioning': settings['auto_commit'] == 'on' and not general}
     if handed: meta['handoff'] = handed
+    meta['effort'] = task.get('effort', '') if not general else ''
     if provider == 'claude':
         if not stored: meta['session_id'] = str(uuid.uuid4())
         meta.update({'model': (task.get('model') if not general else '') or settings['claude_model'], 'permission': settings['claude_permission'], 'system_prompt': general_prompt() if general else system_prompt(project)})
@@ -515,7 +516,7 @@ def describe_run(meta, full=True):
     status = run_status(meta, exit_data, info)
     data = {'id': run_id, 'provider': meta['provider'], 'project': meta['project'], 'task_id': meta.get('task_id'), 'origin': meta.get('origin'), 'chat_id': meta.get('chat_id', 'main'),
             'created_at': meta.get('created_at'), 'finished_at': (exit_data or {}).get('finished_at'), 'status': status,
-            'prompt': clip(prompt, 8000), 'model': info.get('model') or meta.get('model') or '', 'result': info.get('result'),
+            'prompt': clip(prompt, 8000), 'effort': meta.get('effort', ''), 'model': info.get('model') or meta.get('model') or '', 'result': info.get('result'),
             'event_count': len(events), 'permission': meta.get('permission') or meta.get('sandbox'), 'resumed': bool(meta.get('resume_id')), 'handoff': meta.get('handoff', 0)}
     if info.get('limits'): data['limits'] = info['limits']
     version = read_json(config.RUNS / run_id / 'versions.json', None)

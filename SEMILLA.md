@@ -2,9 +2,16 @@
 
 > Leer antes de trabajar. Actualizar las secciones 0, 4 y 5 al terminar.
 
-Última actualización: 2026-10-17, 23:29 Europe/Berlin. Autor: Codex (modelos por chat de proyecto).
+Última actualización: 2026-10-17, 23:38 Europe/Berlin. Autor: Codex (selector de modelos y esfuerzo).
 
 ## 0. Estado en una línea
+
+**Selector inferior de modelo y esfuerzo publicado:** reemplaza el input libre. En el
+compositor de los chats de proyecto, «Escoger modelo» abre panel con modelos y
+niveles compatibles, sin escritura de IDs. El agente general permanece sin selector.
+Catálogo saneado de los CLI: 7 modelos visibles Codex y 13 opciones Claude;
+actualización cada hora con timer. Modelo/esfuerzo por mensaje y por chat/agente,
+conserva sesión y aplica flags reales. **162 Python + 11 frontend OK**.
 
 **Selector de modelo por chat de proyecto publicado:** Proyecto → Agente muestra modelo
 por proveedor, con sugerencias y texto libre, y vuelta a Predeterminado. No se
@@ -193,6 +200,21 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Selector inferior de modelo y esfuerzo (sustituye el input anterior)
+
+- Ya no se ofrecen IDs manuales ni sugerencias inventadas. Catálogo exportado por
+  `tools/refresh_models.py` a CONFIG/model-catalog.json: Codex desde su caché de
+  modelos visibles y Claude desde inicialización stream-json sin ejecutar turnos.
+  Timer `codex-dashboard-models.timer` cada hora; fallos conservan catálogo anterior.
+- No se garantiza cuota/disponibilidad futura; se muestran las opciones de los
+  CLI instalados, no un catálogo remoto consultado en cada apertura. El selector
+  reutiliza metadatos en memoria 60 segundos y respeta restricciones por modelo.
+- No se probó inferencia real de cada modelo (sin gasto de cuota); se verificaron
+  argumentos CLI, persistencia, validación y UI con modelos simulados. No usar
+  credenciales o secretos como fixtures ni imprimir la respuesta cruda initialize.
+- La cola añade `effort` en columna 16; filas anteriores siguen siendo válidas.
+- Respaldo previo: `/srv/platform/backups/codex-dashboard-auto/20261017T213246.295446Z/`.
 
 ### Modelos por chat de proyecto
 
@@ -452,6 +474,30 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Panel de modelos y esfuerzo junto al mensaje
+
+- ModelPicker.jsx: diálogo modal nativo, elección por botones, resumen inferior,
+  niveles compatibles, limpiar esfuerzo al cambiar a modelo no compatible, cerrar
+  por Escape y respeto a movimiento reducido. Sin inputs/datalists de modelos.
+- modelcatalog.py/API autenticada GET /api/models, validador de esfuerzo por modelo
+  en POST /api/agent/send. General rechaza overrides. tasks conserva modelo/esfuerzo
+  en TSV y runs/meta; runner aplica Claude --effort o Codex -c
+  model_reasoning_effort antes de resume. No se cambian permisos de agentes.
+- refresh_models.py: salida saneada/atómica 0600; no exporta account/identidad,
+  credenciales ni instrucciones internas del catálogo. Timer systemd activo.
+- 162 Python OK (incluye compatibilidad modelo/esfuerzo, auth de catálogo,
+  argumentos reales CLI y cola); 11 frontend OK y build Vite correcto.
+  Navegador local: CHATS_BROWSER_OK a 360/390/768/1440 con selección por botones,
+  sin campo manual, esfuerzo en POST, independencia chat/proveedor, Escape,
+  descarte de esfuerzo incompatible y ausencia en el agente general.
+- Verificación final contra URL pública: CHATS_BROWSER_OK a 360/390/768/1440,
+  sin errores JS. Evidencias en artifacts/picker-live-20261017. Datos interceptados
+  en navegador, sin gasto de turnos. Catálogo real en servicio: 7 Codex, 13 Claude,
+  compatibilidades comprobadas. Timer y última actualización correctos.
+- Desplegado con docker compose up -d --build --wait --wait-timeout 90; ambos
+  servicios healthy. curl health/proyecto 200, catálogo anónimo 401. Preview
+  temporal retirado. Configuración de modelos se añade a los respaldos privados.
 
 ### Selector de modelo por proyecto
 

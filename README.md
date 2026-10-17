@@ -111,15 +111,27 @@ Puedes instalar la PWA desde **Ajustes** o el menú del navegador. En iPhone,
 usa Safari → Compartir → Añadir a pantalla de inicio. La interfaz y los paneles
 ya visitados pueden abrirse sin conexión; ejecutar acciones requiere conexión.
 
-## Modelo por chat de proyecto
+## Modelo y esfuerzo por chat de proyecto
 
-En **Proyecto → Agente**, el campo **Modelo de Claude/Codex** permite elegir una
-sugerencia o escribir el identificador del modelo. Claude muestra sus alias;
-se añaden el modelo configurado y los usados en ese chat. La disponibilidad real
-depende de la cuenta del proveedor. **Predeterminado** vuelve al modelo de Ajustes.
-Se recuerda por navegador, chat y proveedor. Cada mensaje guarda su selección en
-la cola; cambiarla afecta a los próximos envíos, sin reiniciar el contexto ni
-interrumpir ejecuciones. El agente general no muestra este selector.
+En **Proyecto → Agente**, debajo del mensaje, pulsa **Escoger modelo**. Abre un
+panel con modelos y esfuerzo de razonamiento; selecciona las opciones y pulsa
+**Listo**. No hay campo para escribir identificadores. **Predeterminado** sigue
+el modelo de Ajustes; **Automático** conserva el esfuerzo que resuelve el CLI.
+Solo se ofrecen los niveles compatibles con el modelo y se limpia una selección
+incompatible al cambiarlo. Cada mensaje conserva su modelo/esfuerzo en la cola;
+las preferencias se recuerdan por chat y proveedor en ese navegador. El agente
+general no muestra el selector.
+
+El catálogo procede del CLI Claude (inicialización sin turnos) y de la caché local
+de modelos de Codex. `tools/refresh_models.py` exporta solo nombres, IDs y
+capacidades a la configuración privada. El timer `codex-dashboard-models.timer`
+lo actualiza cada hora; una consulta fallida conserva el catálogo anterior.
+No se copian credenciales ni prompts internos. La disponibilidad final depende
+de la cuenta y puede cambiar entre actualizaciones.
+
+El esfuerzo se aplica con `--effort` en Claude y `model_reasoning_effort` en Codex:
+[documentación Claude Code](https://code.claude.com/docs/en/model-config),
+[OpenAI Docs](https://developers.openai.com/codex/config-reference/).
 
 ## Agente general (esfera central)
 
@@ -335,7 +347,7 @@ desde proyectos tienen una política de contenido que bloquea scripts.
 
 `/home/dv1/.config/codex-automation/`, montado como `/config`, conserva:
 
-- `tasks.tsv`: cola compatible con las herramientas anteriores; 15 columnas con escapes: `chat_id` en la 14 y `model` en la 15; filas antiguas usan `main` y modelo predeterminado.
+- `tasks.tsv`: cola compatible con las herramientas anteriores; 16 columnas con escapes: `chat_id` en la 14, `model` en la 15 y `effort` en la 16; filas antiguas usan `main` y modelo predeterminado.
 - `chats.json`: nombres e identificadores de los chats de cada proyecto.
 - `chats-archive.json`: chats eliminados y vaciados del principal (fecha, contextos
   anteriores y mensajes cancelados). Sus ejecuciones siguen en `runs/`.

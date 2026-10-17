@@ -54,6 +54,8 @@ def claude_command(meta, run_dir):
         argv += ['--session-id', meta['session_id']]
     if meta.get('model'):
         argv += ['--model', meta['model']]
+    if meta.get('effort'):
+        argv += ['--effort', meta['effort']]
     mode = meta.get('permission', 'ask')
     if mode == 'auto':
         argv += ['--permission-mode', 'auto', '--permission-prompts', 'none']
@@ -81,6 +83,8 @@ def codex_command(meta):
         argv += ['-s', 'read-only' if sandbox == 'read-only' else 'workspace-write']
     if meta.get('model'):
         argv += ['-m', meta['model']]
+    if meta.get('effort'):
+        argv += ['-c', 'model_reasoning_effort=' + json.dumps(meta['effort'])]
     if meta.get('resume_id'):
         argv += ['resume', meta['resume_id']]
     argv.append('-')

@@ -194,8 +194,8 @@ async def push_post(request):
 
 # ---------------------------------------------------------------- agente
 
-def add_task(project, provider, title, details, priority='media', origin='task', chat_id='main', model=''):
-    task = tasks.new_task(project, provider, title, details, priority, origin, chat_id, model)
+def add_task(project, provider, title, details, priority='media', origin='task', chat_id='main', model='', effort=''):
+    task = tasks.new_task(project, provider, title, details, priority, origin, chat_id, model, effort)
     with tasks.LOCK:
         chats.require(project, chat_id)
         if lifecycle.deleting(project) or (project != config.GENERAL and project not in projects.project_names()):
@@ -222,6 +222,11 @@ async def agent_get(request):
     return reply(await blocking(build))
 
 
+async def models_get(request):
+    from cm import modelcatalog
+    return reply(await blocking(modelcatalog.catalog))
+
+
 async def agent_send(request):
     data = await body(request)
     project = agent_project(data.get('project'))
@@ -234,9 +239,14 @@ async def agent_send(request):
     if not isinstance(model, str) or (model and not re.fullmatch(r'[A-Za-z0-9._:\[\]-]{1,80}', model)):
         return fail('Modelo inválido (máximo 80 caracteres, sin espacios)')
     if project == config.GENERAL and model: return fail('El agente general usa el modelo de Ajustes')
+    from cm import modelcatalog
+    effort = data.get('effort', '')
+    if not isinstance(effort, str) or (effort and effort not in modelcatalog.supported_efforts(provider, model)):
+        return fail('Esfuerzo no compatible con el modelo seleccionado')
+    if project == config.GENERAL and effort: return fail('El agente general usa el esfuerzo predeterminado')
     priority = data.get('priority') if data.get('priority') in PRIORITIES else 'media'
     title = text.splitlines()[0][:200]
-    try: task = await blocking(add_task, project, provider, title, text, priority, 'chat', data.get('chat_id', 'main'), model)
+    try: task = await blocking(add_task, project, provider, title, text, priority, 'chat', data.get('chat_id', 'main'), model, effort)
     except ValueError as exc: return fail(str(exc), 404)
     return reply({'message': f'Enviado a {runs.label(provider)}', 'task': task}, 201)
 
@@ -713,7 +723,7 @@ def make_app():
         web.get('/api/state', state), web.get('/api/settings', settings_get), web.post('/api/settings', settings_post),
         web.get('/api/push', push_get), web.post('/api/push', push_post),
         web.get('/api/voice', speech.status), web.post('/api/voice/transcribe', speech.recognize),
-        web.get('/api/agent', agent_get), web.post('/api/agent/send', agent_send), web.post('/api/agent/reset', agent_reset),
+        web.get('/api/models', models_get), web.get('/api/agent', agent_get), web.post('/api/agent/send', agent_send), web.post('/api/agent/reset', agent_reset),
         web.get('/api/agent/chats', chats_get), web.post('/api/agent/chats', chats_post),
         web.get(r'/api/runs/{run_id}', run_get), web.post(r'/api/runs/{run_id}/stop', run_stop),
         web.post('/api/approvals', approval_post), web.post('/api/rules', rules_post),
