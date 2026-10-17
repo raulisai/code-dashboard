@@ -249,19 +249,29 @@ def scaffold_files(name, description, base):
         files.update({
             'package.json': '{\n  "name": "%s",\n  "private": true,\n  "type": "module",\n  "scripts": {"start": "node server.js"}\n}\n' % name,
             'server.js': '''import {createServer} from 'node:http';
-import {readFile} from 'node:fs/promises';
-import {extname, join, normalize} from 'node:path';
+import {realpath, stat} from 'node:fs/promises';
+import {createReadStream} from 'node:fs';
+import {extname, join, normalize, sep} from 'node:path';
 
 const types = {'.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png'};
 const root = join(process.cwd(), 'public');
 
 createServer(async (req, res) => {
-  const url = new URL(req.url, 'http://localhost');
-  if (url.pathname === '/api/health') { res.writeHead(200, {'content-type': 'application/json'}); return res.end('{"ok":true}'); }
-  const file = normalize(join(root, url.pathname === '/' ? 'index.html' : url.pathname));
-  if (!file.startsWith(root)) { res.writeHead(403); return res.end(); }
-  try { const body = await readFile(file); res.writeHead(200, {'content-type': types[extname(file)] || 'application/octet-stream'}); res.end(body); }
-  catch { res.writeHead(404); res.end('No encontrado'); }
+  let url, pathname;
+  try { url = new URL(req.url, 'http://localhost'); pathname = decodeURIComponent(url.pathname); if (pathname.includes('\\0')) throw new Error('Ruta inválida'); }
+  catch { res.writeHead(400); return res.end('Ruta inválida'); }
+  if (!['GET', 'HEAD'].includes(req.method)) { res.writeHead(405, {'allow': 'GET, HEAD'}); return res.end(); }
+  if (pathname === '/api/health') { res.writeHead(200, {'content-type': 'application/json'}); return res.end('{"ok":true}'); }
+  const file = normalize(join(root, pathname === '/' ? 'index.html' : pathname));
+  if (!file.startsWith(root + sep)) { res.writeHead(403); return res.end(); }
+  try {
+    const actual = await realpath(file);
+    if (!actual.startsWith(root + sep)) { res.writeHead(403); return res.end(); }
+    if (!(await stat(actual)).isFile()) { res.writeHead(404); return res.end(); }
+    res.writeHead(200, {'content-type': types[extname(actual)] || 'application/octet-stream', 'x-content-type-options': 'nosniff'});
+    if (req.method === 'HEAD') return res.end();
+    createReadStream(actual).on('error', () => res.destroy()).pipe(res);
+  } catch { res.writeHead(404); res.end('No encontrado'); }
 }).listen(3000, () => console.log('Escuchando en el puerto 3000'));
 ''',
             'public/index.html': starter_page(name, description), 'public/styles.css': STARTER_CSS, 'public/app.js': "console.log('Listo');\n",

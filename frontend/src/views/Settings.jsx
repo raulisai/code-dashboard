@@ -17,6 +17,10 @@ const CODEX_MODES = {
   workspace: ['Sandbox del proyecto', 'Solo escribe dentro del proyecto y sin red. No podrá desplegar con docker.'],
   'read-only': ['Solo lectura', 'Puede leer y responder, pero no cambia nada.'],
 };
+const VERSION_MODES = {
+  on: ['Una versión por cada acción', 'Cada respuesta de un agente, guardado del editor, cambio de archivos y despliegue queda como commit para volver atrás cuando quieras.'],
+  off: ['Solo versiones manuales', 'Las versiones se guardan únicamente al pulsar «Guardar» en Versiones.'],
+};
 
 export default function Settings({onLogout}) {
   const {state, refresh} = useApp();
@@ -71,6 +75,8 @@ export default function Settings({onLogout}) {
         <input type="radio" name="claude" checked={form.claude_permission === key} onChange={() => set('claude_permission', key)}/><div><b>{title}</b><small>{text}</small></div></label>)}</div>
       <div className="field"><span>Permisos de Codex</span>{Object.entries(CODEX_MODES).map(([key, [title, text]]) => <label key={key} className={form.codex_sandbox === key ? 'radio-card on' : 'radio-card'}>
         <input type="radio" name="codex" checked={form.codex_sandbox === key} onChange={() => set('codex_sandbox', key)}/><div><b>{title}</b><small>{text}</small></div></label>)}</div>
+      <div className="field"><span>Versiones (Git)</span>{Object.entries(VERSION_MODES).map(([key, [title, text]]) => <label key={key} className={(form.auto_commit || 'on') === key ? 'radio-card on' : 'radio-card'}>
+        <input type="radio" name="auto_commit" checked={(form.auto_commit || 'on') === key} onChange={() => set('auto_commit', key)}/><div><b>{title}</b><small>{text}</small></div></label>)}</div>
       <div className="two-col">
         <label className="field"><span>Modelo de Claude</span><input className="input" list="claude-models" value={form.claude_model} onChange={e => set('claude_model', e.target.value)} placeholder="Predeterminado"/></label>
         <label className="field"><span>Modelo de Codex</span><input className="input" value={form.codex_model} onChange={e => set('codex_model', e.target.value)} placeholder="Predeterminado"/></label>

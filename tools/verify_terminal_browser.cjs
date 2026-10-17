@@ -12,6 +12,12 @@ function otp(secret){let bits='';for(const c of secret)bits+='ABCDEFGHIJKLMNOPQR
  let page;
  try{
   const context=await browser.newContext({viewport:{width:390,height:844},ignoreHTTPSErrors:true,storageState:fs.existsSync(stateFile)?stateFile:undefined});
+  let ready=false;
+  for(let i=0;i<30;i++){
+   try{if((await context.request.get(base+'/health',{timeout:1000})).status()===200){ready=true;break;}}catch{}
+   await new Promise(resolve=>setTimeout(resolve,200));
+  }
+  assert(ready,'La instancia local no llegó a estar preparada');
   if((await context.request.get(base+'/api/me')).status()!==200){
    const response=await context.request.post(base+'/api/login',{data:{user:'tester',password:'isolated-auth-browser-test'}}),login=await response.json();
    assert(login.setup_required,'La fixture requiere borrar su configuración de pruebas anterior');
@@ -61,4 +67,4 @@ function otp(secret){let bits='';for(const c of secret)bits+='ABCDEFGHIJKLMNOPQR
   console.log('TERMINAL_BROWSER_OK: WebSocket, salida real de bash, historial/directo, reconexión automática y recuperación de error, navegación, tamaños 360/390/1440; sin agentes reales.');
  }catch(e){if(page)await page.screenshot({path:out+'/terminal-failure.png',fullPage:true}).catch(()=>{});throw e;}
  finally{await browser.close();}
-})().catch(e=>{console.error(e.message);process.exitCode=1;});
+})().catch(e=>{console.error(e.message.replace(/(__Host-cm_session=)[^\s]+/g,'$1[redacted]'));process.exitCode=1;});

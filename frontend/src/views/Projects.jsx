@@ -105,7 +105,7 @@ export default function Projects() {
       {project && <>
         <button onClick={() => { setMenu(false); navigate(`/p/${project.name}?tab=agent`); }}><Bot size={18}/>Abrir agente</button>
         <button onClick={() => { setMenu(false); navigate(`/p/${project.name}?tab=preview`); }}><Globe2 size={18}/>Vista previa</button>
-        <button onClick={() => { setMenu(false); navigate(`/p/${project.name}?tab=git`); }}><GitBranch size={18}/>Git</button>
+        <button onClick={() => { setMenu(false); navigate(`/p/${project.name}?tab=git`); }}><GitBranch size={18}/>Versiones (Git)</button>
         <button onClick={() => { setMenu(false); navigate(`/p/${project.name}?tab=console`); }}><SquareTerminal size={18}/>Consola y logs</button>
         <button onClick={() => { setMenu(false); window.open(project.url, '_blank', 'noopener'); }}><ExternalLink size={18}/>Abrir web</button>
         <button onClick={() => { toggleStar(project); setMenu(false); }}><Star size={18}/>{project.featured ? 'Quitar de destacados' : 'Destacar proyecto'}</button>

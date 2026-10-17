@@ -115,8 +115,9 @@ class RunTests(IsolatedConfig, unittest.TestCase):
         events, info = runs.normalize_codex([{'type': 'turn.failed', 'error': {'message': 'Sin cuota'}}])
         self.assertFalse(info['result']['ok']); self.assertEqual(events[0]['text'], 'Sin cuota')
 
-    def test_dispatches_every_free_project_provider_in_priority_order(self):
-        records = [self.task(priority='baja'), self.task(priority='alta'), self.task(provider='claude'), self.task(project='beta')]
+    def test_dispatches_every_free_project_chat_in_priority_order(self):
+        # Un mensaje a la vez por chat (aunque cambie de agente); chats y proyectos distintos van en paralelo.
+        records = [self.task(priority='baja'), self.task(priority='alta'), self.task(provider='claude', chat_id='otro'), self.task(project='beta')]
         tasks.save_tasks(records)
         with patch.object(tmux, 'host_server_ok', return_value=True), patch.object(runs, 'start_run', return_value=(True, 'iniciado', 'fake')) as start:
             self.assertTrue(runs.tick())

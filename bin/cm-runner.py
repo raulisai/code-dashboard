@@ -15,6 +15,12 @@ escribe `exit.json` con el código de salida. Detener = el panel crea el archivo
 import json, os, signal, subprocess, sys, time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+try:
+    from cm import vcs  # solo biblioteca estándar; compartido con el panel
+except Exception:  # p. ej. el panel se restauró a una versión sin versionado
+    vcs = None
+
 HOME = Path(os.environ.get('HOME', '/home/dv1'))
 LOCAL_BIN = HOME / '.local' / 'bin'
 MCP_SCRIPT = Path(__file__).resolve().with_name('cm-approval-mcp.py')
@@ -89,6 +95,52 @@ def build(meta, run_dir):
     return codex_command(meta)
 
 
+def final_text(path, provider):
+    """Última respuesta del agente, para describir el commit de sus cambios."""
+    try:
+        with open(path, 'rb') as handle:
+            handle.seek(0, os.SEEK_END); handle.seek(max(0, handle.tell() - 400000))
+            lines = handle.read().decode('utf-8', errors='replace').splitlines()
+    except OSError:
+        return ''
+    for line in reversed(lines):
+        try: row = json.loads(line)
+        except ValueError: continue
+        if provider == 'claude' and row.get('type') == 'result': return str(row.get('result') or '')
+        item = row.get('item') or {}
+        if provider == 'codex' and row.get('type') == 'item.completed' and item.get('type') == 'agent_message': return str(item.get('text') or '')
+    return ''
+
+
+def version(meta, run_dir, phase, outcome=''):
+    """Un commit con lo pendiente antes del agente y otro con lo que cambió el agente."""
+    if vcs is None or meta.get('kind') != 'agent' or not meta.get('versioning'): return
+    who = 'Claude' if meta.get('provider') == 'claude' else 'Codex'
+    title = meta.get('title') or 'petición desde Codex Manager'
+    path = run_dir / 'versions.json'
+    try: data = json.loads(path.read_text())
+    except (OSError, ValueError): data = {}
+    try:
+        if phase == 'before':
+            result = vcs.snapshot(meta['cwd'], f'Cambios pendientes antes de {who}', 'pending',
+                                  f'Guardados automáticamente antes de la petición: {title}', {'Run': meta['id']})
+            data.update({'base': result['head'], 'before': result['sha']})
+        else:
+            # request.txt = mensaje del usuario sin el contexto añadido por el panel (cambio de agente).
+            source = run_dir / 'request.txt' if (run_dir / 'request.txt').exists() else run_dir / 'prompt.txt'
+            prompt = source.read_text(errors='replace') if source.exists() else ''
+            if prompt.startswith('[Contexto de Codex Manager]'): prompt = prompt.split('\n\n', 1)[-1]
+            answer = final_text(run_dir / 'events.jsonl', meta.get('provider'))
+            body = f'Petición:\n{prompt.strip()[:1500]}' + (f'\n\nRespuesta:\n{answer.strip()[:1200]}' if answer.strip() else '')
+            result = vcs.snapshot(meta['cwd'], f'{who}: {title}' + (f' ({outcome})' if outcome else ''), 'agent', body,
+                                  {'Provider': meta.get('provider'), 'Run': meta['id'], 'Chat': meta.get('chat_id', 'main')})
+            data.update({'commit': result['sha'], 'head': result['head']})
+        if result['error']: data['error'] = result['error']
+    except Exception as error:  # el versionado nunca impide ejecutar ni cerrar la petición
+        data['error'] = str(error)
+    write_json(path, data)
+
+
 def main():
     run_dir = Path(sys.argv[1]).resolve()
     meta = json.loads((run_dir / 'meta.json').read_text())
@@ -107,6 +159,7 @@ def main():
     err_path = run_dir / ('output.log' if is_job else 'stderr.log')
     prompt = run_dir / 'prompt.txt'
     started = time.time()
+    version(meta, run_dir, 'before')
     try:
         argv = build(meta, run_dir)
         with open(out_path, 'ab', buffering=0) as out, open(err_path, 'ab', buffering=0) as err, \
@@ -137,6 +190,7 @@ def main():
                 try: os.killpg(child.pid, sig)
                 except ProcessLookupError: pass
         time.sleep(0.4)
+    version(meta, run_dir, 'after', 'detenida' if stopped else 'con error' if code else '')
     write_json(exit_file, {'code': code, 'stopped': stopped, 'finished_at': time.time(), 'duration': round(time.time() - started, 1)})
     return 0
 

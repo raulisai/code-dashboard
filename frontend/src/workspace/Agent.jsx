@@ -1,10 +1,10 @@
 import React, {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {AlertTriangle, ArrowDown, ArrowUp, Bot, Brain, Check, CheckCircle2, ChevronDown, Circle, CircleDot, Clock3, FileCode2, FilePen, FilePlus2, FileText,
-  Globe2, ListChecks, Paperclip, RotateCcw, Search, ShieldCheck, ShieldQuestion, Square, SquareTerminal, Wrench, X} from 'lucide-react';
-import {api, duration, post, providerLabel, relPath, setQuery, useLocation, useNow, usePolling} from '../lib.js';
+  GitCommitHorizontal, Globe2, ListChecks, Paperclip, RotateCcw, Search, ShieldCheck, ShieldQuestion, Square, SquareTerminal, Trash2, Wrench, X} from 'lucide-react';
+import {api, duration, navigate, post, providerLabel, relPath, setQuery, useLocation, useNow, usePolling} from '../lib.js';
 import Markdown from '../Markdown.jsx';
 import {insertDictation} from '../voice.js';
-import {ProviderMark, ProviderPicker, Spinner, toast, VoiceButton} from '../ui.jsx';
+import {Confirm, ProviderMark, ProviderPicker, Spinner, toast, VoiceButton} from '../ui.jsx';
 
 const EXPLORE = new Set(['Read', 'Glob', 'Grep', 'LS', 'NotebookRead', 'ToolSearch']);
 const SUGGESTIONS = [
@@ -15,6 +15,7 @@ const SUGGESTIONS = [
 ];
 
 function draftKey(project, chatId) { return chatId === 'main' ? `cm-draft-${project}` : `cm-draft-${project}-${chatId}`; }
+function providerKey(project, chatId) { return chatId === 'main' ? `cm-provider-${project}` : `cm-provider-${project}-${chatId}`; }
 
 export default function Agent({project, active}) {
   const {query} = useLocation();
@@ -25,6 +26,7 @@ export default function Agent({project, active}) {
   selection.current = selected;
   useEffect(() => { if (requestedChat && requestedChat !== selection.current) setSelected(requestedChat); }, [requestedChat]);
   const [title, setTitle] = useState(''), [editing, setEditing] = useState(false), [saving, setSaving] = useState(false);
+  const [generation, setGeneration] = useState(0);
   const load = async () => {
     const current = selected;
     const result = await api(`/api/agent/chats?project=${encodeURIComponent(project.name)}`);
@@ -46,6 +48,24 @@ export default function Agent({project, active}) {
     } catch (err) { toast(err.message, 'error'); }
     finally { setSaving(false); }
   };
+  const remove = async () => {
+    const chat = chats.find(row => row.id === selected), main = selected === 'main';
+    if (!chat || saving) return;
+    if (chat.working) { toast('Detén la petición en curso antes de eliminar este chat', 'error'); return; }
+    const queued = chat.queued ? ` Se cancelarán ${chat.queued} mensaje(s) en cola.` : '';
+    if (!window.confirm(main ? `¿Vaciar el Chat principal? Su historial se oculta y Claude y Codex empiezan de cero.${queued} Los archivos del proyecto no se tocan.`
+      : `¿Eliminar el chat «${chat.title}»? Desaparece de la lista junto con su contexto.${queued} Los archivos del proyecto no se tocan.`)) return;
+    setSaving(true);
+    try {
+      const result = await post('/api/agent/chats', {project: project.name, action: 'delete', chat_id: selected});
+      try { for (const key of [draftKey(project.name, selected), `${draftKey(project.name, selected)}-files`, providerKey(project.name, selected)]) localStorage.removeItem(key); } catch { /* sin almacenamiento */ }
+      toast(result.message);
+      if (main) setGeneration(value => value + 1);
+      else { setChats(rows => rows.filter(row => row.id !== selected)); choose('main'); }
+    } catch (err) { toast(err.message, 'error'); }
+    finally { setSaving(false); }
+  };
+  const current = chats.find(chat => chat.id === selected);
   return <div className="agent-chats">
     <div className="chat-selector">
       <label htmlFor={`chat-${project.name}`}>Chat</label>
@@ -54,24 +74,25 @@ export default function Agent({project, active}) {
         {chats.map(chat => <option key={chat.id} value={chat.id}>{chat.title}{chat.working ? ` · ${chat.working} en curso` : ''}{chat.queued ? ` · ${chat.queued} en cola` : ''}</option>)}
       </select>
       <button className="btn small" onClick={() => { setTitle(''); setEditing('create'); }}>+ Nuevo chat</button>
-      {selected !== 'main' && <button className="btn small" onClick={() => { setTitle(chats.find(chat => chat.id === selected)?.title || ''); setEditing('rename'); }} aria-label="Renombrar chat"><FilePen size={14}/></button>}
+      {selected !== 'main' && <button className="btn small" onClick={() => { setTitle(current?.title || ''); setEditing('rename'); }} aria-label="Renombrar chat"><FilePen size={14}/></button>}
+      {current && <button className="btn small danger-soft" onClick={remove} disabled={saving} aria-label={selected === 'main' ? 'Vaciar chat principal' : 'Eliminar chat'} title={selected === 'main' ? 'Vaciar chat principal' : 'Eliminar chat'}><Trash2 size={14}/></button>}
     </div>
     {editing && <form className="chat-name-form" onSubmit={save}>
       <input className="input" autoFocus value={title} maxLength={100} onChange={event => setTitle(event.target.value)} placeholder="Nombre del chat (ej. Diseño, errores, despliegue)" aria-label="Nombre del chat"/>
       <button className="btn small" disabled={saving || (editing === 'rename' && !title.trim())}>{saving ? 'Guardando…' : editing === 'rename' ? 'Guardar' : 'Crear'}</button>
       <button type="button" className="ghost-icon" onClick={() => setEditing(false)} aria-label="Cancelar"><X size={16}/></button>
     </form>}
-    <small className="chat-shared-note">Contextos independientes · Archivos compartidos entre chats</small>
+    <small className="chat-shared-note">Claude y Codex comparten el contexto de cada chat · Archivos compartidos entre chats</small>
     {error && <div className="timeline-error">{error}</div>}
-    <ChatConversation key={`${project.name}:${selected}`} project={project} active={active} chatId={selected}/>
+    <ChatConversation key={`${project.name}:${selected}:${generation}`} project={project} active={active} chatId={selected}/>
   </div>;
 }
 
 function ChatConversation({project, active, chatId}) {
   const name = project.name;
   const [data, setData] = useState(null), [error, setError] = useState('');
-  const providerKey = chatId === 'main' ? `cm-provider-${name}` : `cm-provider-${name}-${chatId}`;
-  const [provider, setProvider] = useState(() => { try { return localStorage.getItem(providerKey) || null; } catch { return null; } });
+  const storedProvider = providerKey(name, chatId);
+  const [provider, setProvider] = useState(() => { try { return localStorage.getItem(storedProvider) || null; } catch { return null; } });
   const [text, setText] = useState(() => { try { return localStorage.getItem(draftKey(name, chatId)) || ''; } catch { return ''; } });
   const attachmentKey = `${draftKey(name, chatId)}-files`;
   const [files, setFiles] = useState(() => { try { const stored = JSON.parse(localStorage.getItem(attachmentKey)); return Array.isArray(stored) ? stored.filter(path => typeof path === 'string') : []; } catch { return []; } }), [uploading, setUploading] = useState(false), [sending, setSending] = useState(false);
@@ -100,7 +121,7 @@ function ChatConversation({project, active, chatId}) {
   usePolling(async () => { try { await load(); } catch (err) { setError(err.message); } }, () => (busy ? 1200 : 4000), [name, busy, active]);
 
   const nextProvider = provider || data?.runs.at(-1)?.provider || data?.settings?.default_provider || 'claude';
-  const chooseProvider = value => { setProvider(value); try { localStorage.setItem(providerKey, value); } catch { /* sin almacenamiento */ } };
+  const chooseProvider = value => { setProvider(value); try { localStorage.setItem(storedProvider, value); } catch { /* sin almacenamiento */ } };
   useEffect(() => { try { text ? localStorage.setItem(draftKey(name, chatId), text) : localStorage.removeItem(draftKey(name, chatId)); } catch { /* sin almacenamiento */ } }, [text, name, chatId]);
 
   // Mantener el scroll abajo mientras llega salida nueva, salvo que el usuario haya subido a leer.
@@ -159,7 +180,7 @@ function ChatConversation({project, active, chatId}) {
   const stopRun = run => act(() => post(`/api/runs/${run.id}/stop`, {}));
   const retry = run => act(() => post('/api/tasks', {action: 'retry', id: run.task_id}), 'Reintentando…');
   const cancel = task => act(() => post('/api/tasks', {action: 'delete', id: task.id}), 'Mensaje quitado de la cola');
-  const reset = () => { if (window.confirm('¿Reiniciar el contexto de este agente en este chat? El historial visible se conserva.')) act(() => post('/api/agent/reset', {project: name, chat_id: chatId, provider: nextProvider})); };
+  const reset = () => { if (window.confirm('¿Reiniciar el contexto de este chat? Claude y Codex empezarán de cero; el historial visible se conserva.')) act(() => post('/api/agent/reset', {project: name, chat_id: chatId, provider: nextProvider})); };
   const expand = async run => {
     try { const full = await api(`/api/runs/${run.id}`); setExpanded(map => ({...map, [run.id]: full})); }
     catch (err) { toast(err.message, 'error'); }
@@ -167,12 +188,15 @@ function ChatConversation({project, active, chatId}) {
 
   const coarse = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
   const sessionId = data?.sessions?.[nextProvider];
+  const hasContext = !!(data && (data.runs.length || Object.values(data.sessions || {}).some(Boolean)));
+  const lastProvider = data?.runs.at(-1)?.provider;
+  const switching = !!(lastProvider && lastProvider !== nextProvider);
   return <div className="agent">
     <div className="agent-bar">
       <ProviderPicker value={nextProvider} onChange={chooseProvider} compact/>
       <span className="grow"/>
-      <span className="conv-state" title={sessionId ? `Sesión ${sessionId}` : ''}>{sessionId ? 'Conversación continua' : 'Conversación nueva'}</span>
-      {sessionId && <button className="btn small" onClick={reset} disabled={!!busy} title="Reiniciar el contexto del agente en este chat"><RotateCcw size={14}/>Reiniciar</button>}
+      <span className="conv-state" title={sessionId ? `Sesión ${sessionId}` : ''}>{!hasContext ? 'Conversación nueva' : switching ? `${providerLabel(nextProvider)} retoma el chat` : 'Conversación continua'}</span>
+      {hasContext && <button className="btn small" onClick={reset} disabled={!!busy} title="Reiniciar el contexto de este chat para Claude y Codex"><RotateCcw size={14}/>Reiniciar</button>}
     </div>
 
     <div className="timeline" ref={scroller} onScroll={onScroll}>
@@ -200,7 +224,7 @@ function ChatConversation({project, active, chatId}) {
           <VoiceButton active={active} disabled={sending || uploading} onText={value => setText(current => insertDictation(current, value))}
             onSend={value => sendMessage(insertDictation(text, value))} sendLabel={`Enviar a ${providerLabel(nextProvider)}`}/>
           <span className="grow"/>
-          {data?.working.some(t => t.provider === nextProvider) && <small className="muted queue-hint">Se pondrá en cola</small>}
+          {data?.working.length > 0 && <small className="muted queue-hint">Se pondrá en cola</small>}
           <button className="send-btn" disabled={sending || uploading || (!text.trim() && !files.length)} aria-label="Enviar">{sending ? <Spinner/> : <ArrowUp size={19}/>}</button>
         </div>
       </div>
@@ -237,7 +261,7 @@ function Run({run, project, onExpand, onApprove, onStop, onRetry}) {
     <div className="msg agent">
       <ProviderMark provider={run.provider} size={26}/>
       <div className="agent-body">
-        <div className="agent-meta"><b>{providerLabel(run.provider)}</b>{run.model && <span>{run.model}</span>}{run.resumed && <span>continúa</span>}</div>
+        <div className="agent-meta"><b>{providerLabel(run.provider)}</b>{run.model && <span>{run.model}</span>}{run.handoff > 0 ? <span title={`Recibió el resumen de ${run.handoff} petición(es) anteriores de este chat`}>retoma el chat</span> : run.resumed && <span>continúa</span>}</div>
         {todo && <TodoCard todo={todo}/>}
         {run.events ? items.map((item, index) => <EventItem key={index} item={item} project={project} last={running && index === items.length - 1}/>)
           : <div className="collapsed-run"><span className="muted">{run.event_count} pasos</span>{run.result?.text && <Clamp text={run.result.text} lines={6}/>}<button className="link-btn" onClick={onExpand}>Ver todos los pasos</button></div>}
@@ -246,6 +270,7 @@ function Run({run, project, onExpand, onApprove, onStop, onRetry}) {
           <span>{run.status === 'stopping' ? 'Deteniendo…' : (run.approvals || []).length ? 'Esperando tu aprobación' : `${providerLabel(run.provider)} está trabajando`} · {duration(elapsed)}</span>
           <button className="btn small danger-soft" onClick={onStop} disabled={run.status === 'stopping'}><Square size={12} fill="currentColor"/>Detener</button></div>}
         {!running && <RunFooter run={run} elapsed={elapsed} onRetry={onRetry}/>}
+        {!running && run.version?.commit && <RunVersion run={run} project={project}/>}
       </div>
     </div>
   </div>;
@@ -258,6 +283,24 @@ function AttachmentPreviews({prompt, project}) {
   const paths = String(prompt || '').split('\n').filter(line => line.startsWith('- .codex-manager/uploads/')).map(line => line.slice(2)).filter(isImage);
   if (!paths.length) return null;
   return <div className="attachment-previews">{paths.map(path => <a key={path} href={rawFile(project, path)} target="_blank" rel="noreferrer"><img src={rawFile(project, path)} alt={path.split('/').pop()} loading="lazy"/></a>)}</div>;
+}
+
+// Cada respuesta que cambió archivos queda como versión: verla o deshacer solo esos cambios.
+function RunVersion({run, project}) {
+  const [asking, setAsking] = useState(false), [busy, setBusy] = useState(false);
+  const sha = run.version.commit;
+  const revert = async () => {
+    setBusy(true);
+    try { toast((await post('/api/git', {project, action: 'revert', rev: sha}, {timeout: 240000})).message, 'success'); setAsking(false); }
+    catch (err) { toast(err.message, 'error'); }
+    finally { setBusy(false); }
+  };
+  return <div className="run-version"><GitCommitHorizontal size={14}/><span>Versión <code>{sha.slice(0, 7)}</code> guardada</span>
+    <button className="link-btn" onClick={() => navigate(`/p/${project}?tab=git&version=${sha}`)}>Ver</button>
+    <button className="link-btn" onClick={() => setAsking(true)}>Deshacer estos cambios</button>
+    {asking && <Confirm title="Deshacer esta respuesta" confirmLabel={busy ? 'Deshaciendo…' : 'Deshacer'} onCancel={() => !busy && setAsking(false)} onConfirm={() => !busy && revert()}
+      text={`Se quitan solo los cambios que hizo ${providerLabel(run.provider)} en esta respuesta; lo posterior se conserva. Queda como una versión nueva y puedes volver a rehacerlo desde Versiones.`}/>}
+  </div>;
 }
 
 function RunFooter({run, elapsed, onRetry}) {

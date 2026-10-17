@@ -249,8 +249,10 @@ async def chats_get(request):
 async def chats_post(request):
     data = await body(request)
     project = project_param(data.get('project'))
-    if data.get('action', 'create') not in ('create', 'rename'): return fail('Acción de chat inválida')
+    if data.get('action', 'create') not in ('create', 'rename', 'delete'): return fail('Acción de chat inválida')
     try:
+        if data.get('action') == 'delete':
+            return reply({'message': await blocking(chats.delete, project, data.get('chat_id'))})
         if data.get('action') == 'rename':
             await blocking(chats.rename, project, data.get('chat_id'), data.get('title'))
             return reply({'message': 'Nombre del chat actualizado'})
@@ -455,14 +457,19 @@ async def files_write(request):
     data = await body(request)
     project = project_param(data.get('project'))
     if not isinstance(data.get('content'), str): return fail('Contenido inválido')
-    result, error = await blocking(files_call, files.write_file, project, data.get('path'), data['content'], data.get('mtime'))
+    write = lambda: files.write_file(project, data.get('path'), data['content'], data.get('mtime'))
+    result, error = await blocking(files_call, gitops.versioned, project, f'Editar {clean_path(data.get("path"))}', 'edit', write)
     return reply({'message': 'Guardado', **result}) if error is None else fail(error, 409)
 
 
 async def files_op(request):
     data = await body(request)
     project = project_param(data.get('project'))
-    result, error = await blocking(files_call, files.operate, project, str(data.get('action')), data.get('path'), data.get('to', ''))
+    action, path = str(data.get('action')), clean_path(data.get('path'))
+    subject = {'mkdir': f'Crear carpeta {path}', 'create': f'Crear archivo {path}', 'delete': f'Eliminar {path}',
+               'rename': f'Mover {path} → {clean_path(data.get("to"))}'}.get(action, f'Archivos: {action}')
+    operate = lambda: files.operate(project, action, data.get('path'), data.get('to', ''))
+    result, error = await blocking(files_call, gitops.versioned, project, subject, 'files', operate)
     return reply({'message': result}) if error is None else fail(error, 409)
 
 
@@ -473,6 +480,9 @@ async def files_upload(request):
     reader = await request.multipart()
     saved = []
     total = 0
+    # Los adjuntos del chat (.codex-manager/uploads) no se versionan; las cargas al proyecto sí.
+    versioning = request.query.get('dir') is not None
+    if versioning: await blocking(gitops.record, project, 'Cambios pendientes antes de: subir archivos', 'pending')
     async for part in reader:
         if len(saved) >= 16: return fail('Máximo 16 archivos por carga', 413)
         data = bytearray()
@@ -485,12 +495,48 @@ async def files_upload(request):
         result, error = await blocking(files_call, files.save_upload, project, request.query.get('dir'), part.filename, data)
         if error: return fail(error)
         saved.append(result)
+    if versioning and saved:
+        await blocking(gitops.record, project, f'Subir {len(saved)} archivo(s): ' + ', '.join(saved[:3]) + ('…' if len(saved) > 3 else ''), 'upload')
     return reply({'message': f'{len(saved)} archivo(s) subidos', 'paths': saved}, 201)
+
+
+def clean_path(value):
+    return ' '.join(str(value or '').strip().lstrip('/').split())[:120]
+
+
+def git_call(func, *args):
+    try: return func(*args), None
+    except gitops.VersionError as error: return None, str(error)
+    except files.FileError as error: return None, str(error)
+
+
+def query_int(request, key, default):
+    try: return int(request.query.get(key, default))
+    except ValueError: return default
 
 
 async def git_get(request):
     project = project_param(request.query.get('project'))
-    return reply(await blocking(gitops.status, project))
+    result, error = await blocking(git_call, gitops.status, project)
+    return reply(result) if error is None else fail(error, 409)
+
+
+async def git_log(request):
+    project = project_param(request.query.get('project'))
+    result, error = await blocking(git_call, gitops.log, project, request.query.get('ref', ''), query_int(request, 'skip', 0), query_int(request, 'limit', 40))
+    return reply(result) if error is None else fail(error, 404)
+
+
+async def git_commit(request):
+    project = project_param(request.query.get('project'))
+    result, error = await blocking(git_call, gitops.show, project, request.query.get('rev', ''))
+    return reply(result) if error is None else fail(error, 404)
+
+
+async def git_branches(request):
+    project = project_param(request.query.get('project'))
+    result, error = await blocking(git_call, gitops.branches, project)
+    return reply(result) if error is None else fail(error, 409)
 
 
 async def git_diff(request):
@@ -501,16 +547,21 @@ async def git_diff(request):
         if error: return fail(error)
         path = path.lstrip('/')
         if path.startswith('-'): return fail('Ruta inválida')
-    return reply(await blocking(gitops.diff, project, path))
+    result, error = await blocking(git_call, gitops.diff, project, path, request.query.get('rev', ''), request.query.get('compare') == '1')
+    return reply(result) if error is None else fail(error, 404)
 
 
 async def git_post(request):
     data = await body(request)
     project = project_param(data.get('project'))
-    if data.get('action') != 'commit': return fail('Acción inválida')
-    ok, message = await blocking(gitops.commit, project, data.get('message'))
+    ok, message, extra = await blocking(gitops.act, project, data)
     projects.invalidate()
-    return reply({'message': message}, 200 if ok else 409)
+    if ok and data.get('deploy') is True and data.get('action') in ('restore', 'undo', 'revert', 'switch', 'merge'):
+        # «Restaurar y desplegar»: el rollback llega también a la web publicada.
+        started, job_message, job_id = await blocking(runs.start_job, project, 'deploy')
+        extra['job_id'] = job_id if started else ''
+        message += f' {job_message}' if started else f' No se pudo desplegar: {job_message}'
+    return reply({'message': message, **extra}, 200 if ok else 409)
 
 
 # ---------------------------------------------------------------- terminal web
@@ -629,6 +680,7 @@ def make_app():
         web.get('/api/files/list', files_list), web.get('/api/files/read', files_read), web.get('/api/files/raw', files_raw),
         web.post('/api/files/write', files_write), web.post('/api/files/op', files_op), web.post('/api/files/upload', files_upload),
         web.get('/api/git', git_get), web.get('/api/git/diff', git_diff), web.post('/api/git', git_post),
+        web.get('/api/git/log', git_log), web.get('/api/git/commit', git_commit), web.get('/api/git/branches', git_branches),
         web.get('/api/term', terminal), web.get('/api/term/status', terminal_status), web.post('/api/term/scroll', terminal_scroll), web.post('/api/term/kill', terminal_kill),
         web.get('/{tail:.*}', frontend),
     ])

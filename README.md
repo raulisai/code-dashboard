@@ -4,6 +4,11 @@ Entorno de desarrollo del VPS, disponible en https://codex-dashboard.devdj.lat.
 Permite crear proyectos, trabajar con Claude Code o Codex, editar archivos,
 usar una terminal, revisar Git y logs, y desplegar desde el celular.
 
+La revisión de controles, pruebas y riesgos conocidos está en [SEGURIDAD.md](SEGURIDAD.md).
+El panel permite administración real del VPS; no es un entorno aislado para
+usuarios o repositorios sin confianza. Las alertas del sistema base pendientes
+de parche se documentan expresamente en ese informe.
+
 ## Uso
 
 Inicia sesión con las credenciales de `.env` y el código de tu app autenticadora.
@@ -70,6 +75,16 @@ despliegues y Git. En móvil las herramientas adicionales están en **Más**;
 en escritorio hay una vista previa lateral. Los mensajes admiten código,
 saltos de línea, adjuntos con miniaturas y dictado cuando el navegador lo permite.
 
+La terminal comprueba el acceso antes de abrir y muestra los errores de conexión.
+Si se corta, reintenta con espera progresiva hasta cinco veces; **Reconectar**
+permite volver a intentarlo manualmente. Al leer el historial aparece
+**Volver al directo**. Enviar un comando desde la línea móvil sale del historial
+antes de escribirlo. Hay un máximo de cuatro conexiones por sesión web y doce
+globales; cerrar una pestaña desconecta su cliente y conserva la sesión tmux.
+Las consultas y commits de Git desde el panel no ejecutan hooks, fsmonitor,
+firmas ni conversores definidos por el repositorio; ejecútalos desde la terminal
+si necesitas esas tareas de confianza.
+
 Puedes instalar la PWA desde **Ajustes** o el menú del navegador. En iPhone,
 usa Safari → Compartir → Añadir a pantalla de inicio. La interfaz y los paneles
 ya visitados pueden abrirse sin conexión; ejecutar acciones requiere conexión.
@@ -134,7 +149,10 @@ Cada mensaje se ejecuta como un proceso independiente en el host:
 
 En **Agente**, el selector **Chat** permite tener conversaciones independientes
 para diseño, errores u otras tareas. **+ Nuevo chat** crea una sesión con nombre;
-el botón de lápiz permite renombrarla. **Chat principal** conserva las conversaciones
+el botón de lápiz permite renombrarla y la papelera la elimina (pide confirmación,
+cancela sus mensajes en cola y no toca los archivos del proyecto; no se permite con
+una petición en curso). En **Chat principal** la papelera lo **vacía**: oculta su
+historial y Claude y Codex empiezan de cero. **Chat principal** conserva las conversaciones
 anteriores. La selección, los borradores, adjuntos y el proveedor elegido se
 recuerdan por chat en este navegador. El historial y los contextos se guardan en
 el servidor. Los enlaces de la cola y avisos abren el chat correspondiente.
@@ -143,28 +161,34 @@ Los chats pueden trabajar al mismo tiempo, pero **comparten los archivos del
 proyecto**: no son ramas ni entornos aislados. Evita cambios simultáneos en el
 mismo archivo. Permisos y reglas «Siempre» siguen siendo del proyecto.
 
-Ambos conservan la conversación por proyecto, chat y proveedor. El panel normaliza
-los eventos para mostrar respuestas, herramientas, planes y resultados.
+**Claude y Codex comparten el contexto de cada chat**: se puede cambiar de agente en
+cualquier mensaje y el trabajo continúa. Cada proveedor mantiene su propia sesión
+(`--resume` / `exec resume`) y, al cambiar, el panel antepone al mensaje un resumen
+de las peticiones del chat que ese agente no vio (petición, respuesta final,
+archivos modificados y versión guardada; hasta 12 peticiones / ~14 000 caracteres).
+Si el agente no tiene sesión propia recibe todo el chat desde el último reinicio.
+La interfaz muestra «retoma el chat» y el historial enseña solo el mensaje del
+usuario (`request.txt`); lo enviado realmente queda en `prompt.txt`.
+El panel normaliza los eventos para mostrar respuestas, herramientas, planes y resultados.
 La cola despierta al recibir cambios y se reconcilia cada dos segundos:
-despacha todas las combinaciones proyecto/chat/agente que estén libres, una petición
-por combinación. La salida real del proceso determina cuándo termina una tarea.
+despacha todos los pares proyecto/chat libres, **un mensaje a la vez por chat**
+aunque cambie de agente (el siguiente necesita el resultado anterior); chats
+distintos trabajan en paralelo. La salida real del proceso determina cuándo termina una tarea.
 Los procesos perdidos se marcan como error y liberan la cola.
 
-Claude usa por defecto **Aprobar desde la web**. Las ediciones del proyecto se
-aceptan automáticamente; comandos, web, agentes y habilidades piden aprobación
-con **Permitir**, **Denegar** y, cuando corresponde, **Siempre**. El puente MCP
-persiste la solicitud y espera la respuesta del panel. Las reglas se limitan al
-proyecto y al comando completo o dominio web; los comandos peligrosos y los
-intérpretes no ofrecen aprobación permanente. No se usa `bypassPermissions`.
-Los modos auto y solo ediciones se pueden seleccionar expresamente en Ajustes.
+En este servidor el usuario autorizó operación autónoma: Claude está configurado
+con **Auto**, sin prompts interactivos; su clasificador puede rechazar acciones.
+Las nuevas ejecuciones usan ese ajuste. El modo **Aprobar desde la web** sigue
+siendo seleccionable en Ajustes cuando se quiera revisión manual. No se usa
+`bypassPermissions`.
 
 Codex conserva por defecto el acceso completo autorizado por el usuario.
 También se pueden seleccionar los sandboxes de proyecto o solo lectura.
 
 **Detener** solicita SIGINT al grupo del proceso, después SIGTERM y SIGKILL si
 no termina. El historial se conserva y la siguiente petición puede continuar
-la conversación. **Reiniciar** reinicia solo el contexto de ese agente en ese chat,
-sin borrar el historial y únicamente cuando no tiene mensajes activos ni en cola.
+la conversación. **Reiniciar** reinicia el contexto del chat para Claude y Codex,
+sin borrar el historial visible y únicamente cuando no tiene mensajes activos ni en cola.
 **Reintentar** devuelve una tarea fallida a la cola. Si el proveedor agota su
 cupo, se muestra el error; para Claude también se muestra la fecha de reposición
 que informa su CLI. El límite no deja la cola bloqueada.
@@ -227,6 +251,8 @@ desde proyectos tienen una política de contenido que bloquea scripts.
 
 - `tasks.tsv`: cola compatible con las herramientas anteriores; 14 columnas con escapes (la última es `chat_id`; filas anteriores pertenecen a `main`).
 - `chats.json`: nombres e identificadores de los chats de cada proyecto.
+- `chats-archive.json`: chats eliminados y vaciados del principal (fecha, contextos
+  anteriores y mensajes cancelados). Sus ejecuciones siguen en `runs/`.
 - `runs/`, `jobs/`: metadatos, eventos, logs, aprobaciones y códigos de salida.
 - `agent-sessions.json`, `settings.json`, `approval-rules.json`.
 - `.cm-secret`: firma de sesiones; cambiar la contraseña invalida las cookies.
@@ -266,3 +292,12 @@ La implementación sigue las guías de [PyOTP](https://pyauth.github.io/pyotp/) 
 [gestión de sesiones OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).
 
 Consulta `SEMILLA.md` antes de trabajar y actualízalo al terminar.
+
+### Respaldo del servidor autónomo
+
+`codex-dashboard-backup.timer` guarda una copia diaria privada de código pendiente,
+historial Git y configuración (SQLite consistente), con sumas SHA256 y retención
+de 14 copias completas en `/srv/platform/backups/codex-dashboard-auto/`.
+Copia adicional antes de cambios delicados:
+`python3 /srv/platform/bin/backup-codex-dashboard.py`.
+Ver recuperación en SEMILLA.md. Los respaldos contienen secretos: no publicarlos.

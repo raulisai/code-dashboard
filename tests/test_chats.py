@@ -1,3 +1,6 @@
+import json
+import secrets
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
@@ -105,6 +108,114 @@ class ChatTests(IsolatedConfig, unittest.TestCase):
         self.assertEqual(chats.catalog()['alpha'], [chat])
         self.assertEqual(runs.chat_sessions('alpha', chat['id']), {})
 
+    def finished_run(self, provider, chat_id, request, answer, session, path='index.html', created_at=None):
+        # Los identificadores reales empiezan por la hora de creación: el historial se ordena por ellos.
+        created_at = created_at or time.time() - 30
+        identifier = time.strftime('%Y%m%d-%H%M%S', time.localtime(created_at)) + '-' + secrets.token_hex(3)
+        meta = self.run_meta(provider=provider, chat_id=chat_id, id=identifier, created_at=created_at)
+        (config.RUNS / meta['id'] / 'request.txt').write_text(request)
+        return self.complete(meta, answer, session, path)
+
+    def complete(self, meta, answer, session, path='index.html'):
+        provider, folder = meta['provider'], config.RUNS / meta['id']
+        full = f"{meta['cwd']}/{path}"
+        if provider == 'codex':
+            rows = [{'type': 'thread.started', 'thread_id': session},
+                    {'type': 'item.completed', 'item': {'id': 'f', 'type': 'file_change', 'changes': [{'path': full, 'kind': 'update'}], 'status': 'completed'}},
+                    {'type': 'item.completed', 'item': {'id': 'm', 'type': 'agent_message', 'text': answer}}, {'type': 'turn.completed', 'usage': {}}]
+        else:
+            rows = [{'type': 'system', 'subtype': 'init', 'session_id': session},
+                    {'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'id': 'e', 'name': 'Edit', 'input': {'file_path': full}}]}},
+                    {'type': 'result', 'subtype': 'success', 'result': answer}]
+        (folder / 'events.jsonl').write_text('\n'.join(json.dumps(row) for row in rows) + '\n')
+        write_json(folder / 'exit.json', {'code': 0})
+        runs.set_agent_session('alpha', provider, session, meta.get('chat_id', 'main'))
+        return meta
+
+    def start(self, provider, chat_id, text):
+        with patch.object(tmux, 'new_session', return_value=(True, '')):
+            ok, _, run_id = runs.start_run(self.task(provider=provider, chat_id=chat_id, origin='chat', details=text))
+        self.assertTrue(ok)
+        folder = config.RUNS / run_id
+        return runs.run_meta(run_id), (folder / 'prompt.txt').read_text(), (folder / 'request.txt').read_text()
+
+    def test_switching_provider_hands_over_unseen_turns_of_the_same_chat(self):
+        chat = chats.create('alpha', 'Diseño')['id']
+        self.finished_run('codex', 'main', 'Otro chat', 'No debe aparecer', 'main-thread', created_at=time.time() - 90)
+        self.finished_run('codex', chat, 'Pon el botón azul', 'Botón azul listo', 'thread-1', 'src/app.css', created_at=time.time() - 60)
+        meta, prompt, request = self.start('claude', chat, 'Ahora hazlo redondo')
+        self.assertEqual(request, 'Ahora hazlo redondo')
+        self.assertTrue(prompt.startswith('[Contexto de Codex Manager: continuidad del chat]'))
+        self.assertTrue(prompt.endswith('[Mensaje actual del usuario]\nAhora hazlo redondo'))
+        for expected in ('Pon el botón azul', 'Codex respondió: Botón azul listo', 'Archivos modificados: src/app.css'):
+            self.assertIn(expected, prompt)
+        self.assertNotIn('No debe aparecer', prompt)
+        self.assertEqual(meta['handoff'], 1)
+        self.assertEqual(runs.describe_run(meta, full=False)['prompt'], 'Ahora hazlo redondo')
+        # Claude respondió; al volver a Codex solo recibe lo que hizo Claude, no su propio turno.
+        self.complete(meta, 'Bordes redondeados', meta['session_id'], 'src/button.css')
+        time.sleep(1.01)  # identificador de la siguiente ejecución en otro segundo, como en el uso real
+        meta, prompt, _ = self.start('codex', chat, 'Revisa en celular')
+        self.assertEqual(meta['resume_id'], 'thread-1')
+        self.assertIn('Claude respondió: Bordes redondeados', prompt)
+        self.assertNotIn('Botón azul listo', prompt)
+        self.assertEqual(meta['handoff'], 1)
+
+    def test_same_provider_continuing_gets_no_extra_context(self):
+        self.finished_run('codex', 'main', 'Primero', 'Hecho', 'thread-1')
+        meta, prompt, request = self.start('codex', 'main', 'Segundo')
+        self.assertEqual((prompt, request, meta.get('handoff')), ('Segundo', 'Segundo', None))
+
+    def test_new_session_receives_whole_chat_and_reset_starts_clean(self):
+        self.finished_run('codex', 'main', 'Primero', 'Hecho 1', 'thread-1', created_at=time.time() - 60)
+        self.finished_run('claude', 'main', 'Segundo', 'Hecho 2', 'session-2', created_at=time.time() - 30)
+        runs.set_agent_session('alpha', 'claude', '')  # p. ej. sesión perdida por un error de cuota
+        meta, prompt, _ = self.start('claude', 'main', 'Tercero')
+        self.assertEqual(meta['handoff'], 2)
+        self.assertLess(prompt.index('Hecho 1'), prompt.index('Hecho 2'))
+        tasks.save_tasks([])
+        self.assertTrue(runs.reset_conversation('alpha', 'codex')[0])
+        self.assertEqual(runs.chat_sessions('alpha'), {})
+        meta, prompt, _ = self.start('codex', 'main', 'Desde cero')
+        self.assertNotIn('continuidad del chat', prompt)
+        self.assertTrue(prompt.startswith('[Contexto de Codex Manager] '))
+
+    def test_chat_processes_one_message_at_a_time_even_across_providers(self):
+        tasks.save_tasks([self.task(provider='codex'), self.task(provider='claude')])
+        with patch.object(tmux, 'host_server_ok', return_value=True), patch.object(runs, 'start_run', return_value=(True, 'ok', 'fake')) as start:
+            runs.tick()
+        self.assertEqual(start.call_count, 1)
+        self.assertEqual([t['status'] for t in tasks.task_records()], ['working', 'espera'])
+
+    def test_delete_chat_cancels_queue_forgets_context_and_archives(self):
+        keep, chat = chats.create('alpha', 'Otro')['id'], chats.create('alpha', 'Equivocado')['id']
+        runs.set_agent_session('alpha', 'codex', 'thread', chat)
+        runs.set_agent_session('alpha', 'codex', 'kept', keep)
+        tasks.save_tasks([self.task(chat_id=chat, status='working')])
+        with self.assertRaises(ValueError): chats.delete('alpha', chat)
+        tasks.save_tasks([self.task(chat_id=chat), self.task(chat_id=keep)])
+        self.assertIn('Equivocado', chats.delete('alpha', chat))
+        self.assertEqual([c['id'] for c in chats.list_chats('alpha')], ['main', keep])
+        self.assertEqual([t['status'] for t in tasks.task_records()], ['error', 'espera'])
+        self.assertEqual(runs.chat_sessions('alpha', chat), {})
+        self.assertEqual(runs.chat_sessions('alpha', keep)['codex']['id'], 'kept')
+        archived = chats.archive()['alpha'][0]
+        self.assertEqual((archived['id'], archived['sessions']['codex']['id'], archived['cancelled']), (chat, 'thread', 1))
+        with self.assertRaises(ValueError): chats.require('alpha', chat)
+        with self.assertRaises(ValueError): chats.delete('beta', keep)
+
+    def test_clearing_main_hides_history_and_resets_both_agents(self):
+        old = self.finished_run('codex', 'main', 'Viejo', 'Hecho', 'thread', created_at=time.time() - 30)
+        runs.set_agent_session('alpha', 'claude', 'session')
+        chats.delete('alpha', 'main')
+        self.assertEqual(chats.list_chats('alpha')[0]['id'], 'main')
+        self.assertEqual(runs.conversation('alpha'), [])
+        self.assertEqual(runs.chat_sessions('alpha'), {})
+        self.assertTrue((config.RUNS / old['id'] / 'meta.json').exists())
+        meta, prompt, _ = self.start('codex', 'main', 'Nuevo')
+        self.assertNotIn('Viejo', prompt)
+        self.assertEqual([r['id'] for r in runs.conversation('alpha')], [meta['id']])
+
 
 class ChatHttpTests(IsolatedConfig, unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -137,3 +248,9 @@ class ChatHttpTests(IsolatedConfig, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.status, 404)
         self.assertEqual(len(tasks.task_records()), 2)
         self.assertEqual((await self.client.post('/api/agent/chats', json={'project': 'alpha'}, headers={'Origin': 'https://evil.example'})).status, 403)
+        response = await self.client.post('/api/agent/chats', json={'project': 'alpha', 'action': 'delete', 'chat_id': chat})
+        self.assertEqual(response.status, 200)
+        self.assertEqual([c['id'] for c in (await (await self.client.get('/api/agent/chats?project=alpha')).json())['chats']], ['main'])
+        self.assertEqual((await self.client.get(f'/api/agent?project=alpha&chat_id={chat}')).status, 404)
+        self.assertEqual((await self.client.post('/api/agent/chats', json={'project': 'alpha', 'action': 'delete', 'chat_id': chat})).status, 400)
+        self.assertEqual((await self.client.post('/api/agent/chats', json={'project': 'alpha', 'action': 'delete', 'chat_id': 'main'}, headers={'Origin': 'https://evil.example'})).status, 403)

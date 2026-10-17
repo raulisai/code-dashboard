@@ -9,6 +9,8 @@ archivo de confirmación), aquí el final es inequívoco: el proceso termina y d
 
 La conversación continúa entre peticiones: Claude con `--resume <session_id>` y
 Codex con `exec resume <thread_id>`, guardados por proyecto/chat/proveedor en agent-sessions.json.
+Claude y Codex comparten cada chat: al cambiar de agente, el elegido recibe un resumen de
+las peticiones del chat que no vio (handoff_context), así el trabajo sigue sin repetirlo.
 """
 import hashlib, json, re, secrets, threading, time, uuid
 from functools import wraps
@@ -54,6 +56,7 @@ def load_settings():
     if data['claude_permission'] not in config.CLAUDE_PERMISSIONS: data['claude_permission'] = 'ask'
     if data['codex_sandbox'] not in config.CODEX_SANDBOXES: data['codex_sandbox'] = 'full'
     if data['default_provider'] not in config.PROVIDERS: data['default_provider'] = 'claude'
+    if data['auto_commit'] not in ('on', 'off'): data['auto_commit'] = 'on'
     return data
 
 
@@ -66,6 +69,7 @@ def save_settings(changes):
         if key == 'claude_permission' and value not in config.CLAUDE_PERMISSIONS: return False, 'Modo de permisos de Claude inválido'
         if key == 'codex_sandbox' and value not in config.CODEX_SANDBOXES: return False, 'Modo de sandbox de Codex inválido'
         if key == 'default_provider' and value not in config.PROVIDERS: return False, 'Agente por defecto inválido'
+        if key == 'auto_commit' and value not in ('on', 'off'): return False, 'Valor de versionado automático inválido'
         if key.endswith('_model') and value and not re.fullmatch(r'[A-Za-z0-9._:\[\]-]{1,80}', value): return False, 'Nombre de modelo inválido'
         current[key] = value
     write_json(config.SETTINGS_FILE, current)
@@ -94,14 +98,32 @@ def chat_sessions(project, chat_id='main'):
     return {k: v for k, v in bucket.items() if k in config.PROVIDERS}
 
 
+def context_start(project, chat_id='main'):
+    """Desde cuándo cuenta el contexto del chat (0 = desde el principio)."""
+    bucket = agent_sessions().get(project, {})
+    if chat_id != 'main': bucket = bucket.get('_chats', {}).get(chat_id, {})
+    return bucket.get('_reset_at', 0)
+
+
+@state_locked
+def reset_context(project, chat_id='main'):
+    data = agent_sessions()
+    bucket = data.setdefault(project, {})
+    if chat_id != 'main': bucket = bucket.setdefault('_chats', {}).setdefault(chat_id, {})
+    for provider in config.PROVIDERS: bucket.pop(provider, None)
+    bucket['_reset_at'] = time.time()
+    write_json(config.SESSIONS_FILE, data)
+
+
 def reset_conversation(project, provider, chat_id='main'):
+    # El contexto es del chat, no de un agente: se reinician los dos a la vez.
     if provider not in config.PROVIDERS: return False, 'Agente inválido'
     with tasks.LOCK:
-        if any(t['project'] == project and t.get('chat_id', 'main') == chat_id and t['provider'] == provider and t['status'] in ('working', 'espera') for t in tasks.task_records()):
+        if any(t['project'] == project and t.get('chat_id', 'main') == chat_id and t['status'] in ('working', 'espera') for t in tasks.task_records()):
             return False, 'Detén la petición actual antes de empezar una conversación nueva'
-        set_agent_session(project, provider, '', chat_id)
+        reset_context(project, chat_id)
     changed()
-    return True, f'Nueva conversación con {label(provider)}: la próxima petición empieza desde cero'
+    return True, 'Contexto reiniciado: Claude y Codex empiezan desde cero en este chat'
 
 
 def label(provider):
@@ -122,6 +144,72 @@ def system_prompt(project):
             'del proyecto y verifica la URL con curl antes de terminar.')
 
 
+HANDOFF_SCAN, HANDOFF_RUNS, HANDOFF_CHARS = 40, 12, 14000
+STATE_TEXT = {'done': 'terminada', 'stopped': 'detenida por el usuario', 'error': 'terminó con error', 'running': 'en curso', 'stopping': 'deteniéndose'}
+
+
+def request_text(meta):
+    """Mensaje del usuario, sin el contexto que añade el panel."""
+    folder = config.RUNS / meta['id']
+    try: return (folder / 'request.txt').read_text(errors='replace')
+    except OSError: pass
+    try: prompt = (folder / 'prompt.txt').read_text(errors='replace')
+    except OSError: return ''
+    if meta['provider'] == 'codex' and prompt.startswith('[Contexto de Codex Manager]'):
+        prompt = prompt.split('\n\n', 1)[-1]
+    return prompt
+
+
+def _run_summary(meta):
+    events, info = run_events(meta['id'], meta['provider'])
+    status = run_status(meta, exit_info(meta['id']), info)
+    who = label(meta['provider'])
+    when = time.strftime('%d/%m %H:%M UTC', time.gmtime(meta.get('created_at') or 0))
+    answer = ((info.get('result') or {}).get('text') or next((e['text'] for e in reversed(events) if e.get('t') == 'text' and not e.get('sub')), '')).strip()
+    root, changed_files = f"{meta.get('cwd', '')}/", []
+    for event in events:
+        if event.get('t') != 'tool': continue
+        data = event.get('input') or {}
+        paths = [data.get('file_path')] if event.get('name') in ('Write', 'Edit', 'MultiEdit') else [c.get('path') for c in data.get('changes') or [] if isinstance(c, dict)]
+        for path in paths:
+            path = str(path or '').removeprefix(root)
+            if path and path not in changed_files: changed_files.append(path)
+    lines = [f'### {who} · {when} · {STATE_TEXT.get(status, status)}', f'Usuario: {clip(request_text(meta).strip(), 1500)}']
+    if answer: lines.append(f'{who} respondió: {clip(answer, 2500)}')
+    elif status == 'error': lines.append(f"Error: {clip(describe_run(meta, full=False).get('error') or 'sin detalle', 400)}")
+    if changed_files: lines.append('Archivos modificados: ' + ', '.join(changed_files[:25]) + (f' y {len(changed_files) - 25} más' if len(changed_files) > 25 else ''))
+    version = read_json(config.RUNS / meta['id'] / 'versions.json', None)
+    if isinstance(version, dict) and version.get('commit'): lines.append(f"Versión guardada: {str(version['commit'])[:10]}")
+    return '\n'.join(lines)
+
+
+def handoff_context(project, chat_id, provider, stored):
+    """Peticiones del chat que el agente elegido no ha visto: las posteriores a su último turno
+    en la sesión guardada, o todo el chat (desde el último reinicio) si no tiene sesión.
+    Devuelve (texto para anteponer al mensaje, número de peticiones resumidas)."""
+    since, unseen = context_start(project, chat_id), []
+    for meta in list_runs(project, limit=HANDOFF_SCAN, chat_id=chat_id):
+        if meta.get('created_at', 0) <= since: break
+        if stored and meta['provider'] == provider:
+            session = run_events(meta['id'], provider)[1].get('session_id')
+            if session and stored in (session, meta.get('resume_id')): break
+        unseen.append(meta)
+    unseen.sort(key=lambda meta: meta.get('created_at', 0), reverse=True)
+    parts, used = [], 0
+    for meta in unseen[:HANDOFF_RUNS]:
+        text = _run_summary(meta)
+        if parts and used + len(text) > HANDOFF_CHARS: break
+        parts.append(text); used += len(text)
+    if not parts: return '', 0
+    omitted = len(unseen) - len(parts)
+    parts.reverse()
+    header = (f'[Contexto de Codex Manager: continuidad del chat] Claude y Codex comparten este chat del proyecto «{project}» '
+              f'y el usuario puede alternar entre ambos. Antes de este mensaje hubo {len(parts)} petición(es) que no viste'
+              + (f' (se omiten {omitted} más antiguas)' if omitted else '') + '. Los archivos del proyecto ya contienen esos cambios; '
+              'comprueba el estado real (git status/log, notas del proyecto) si lo necesitas y continúa sin pedir al usuario que repita nada.')
+    return f'{header}\n\n' + '\n\n'.join(parts) + '\n\n[Mensaje actual del usuario]\n', len(parts)
+
+
 def start_run(task):
     """Lanza la petición en el host. Devuelve (ok, mensaje, run_id)."""
     provider, project = task['provider'], task['project']
@@ -135,9 +223,14 @@ def start_run(task):
     run_dir.mkdir(parents=True, mode=0o700)
     chat_id = task.get('chat_id') or 'main'
     stored = chat_sessions(project, chat_id).get(provider, {}).get('id', '')
-    prompt = tasks.task_prompt(task)
+    request = tasks.task_prompt(task)
+    handoff, handed = handoff_context(project, chat_id, provider, stored)
+    prompt = handoff + request
     meta = {'id': run_id, 'kind': 'agent', 'provider': provider, 'project': project, 'task_id': task['id'], 'chat_id': chat_id,
-            'cwd': f'{config.HOST_PROJECTS}/{project}', 'created_at': time.time(), 'resume_id': stored, 'origin': task.get('origin', 'task')}
+            'cwd': f'{config.HOST_PROJECTS}/{project}', 'created_at': time.time(), 'resume_id': stored, 'origin': task.get('origin', 'task'),
+            # El runner guarda una versión antes y otra después del agente (bin/cm-runner.py).
+            'title': ' '.join(str(task.get('title') or '').split())[:100], 'versioning': settings['auto_commit'] == 'on'}
+    if handed: meta['handoff'] = handed
     if provider == 'claude':
         if not stored: meta['session_id'] = str(uuid.uuid4())
         meta.update({'model': settings['claude_model'], 'permission': settings['claude_permission'], 'system_prompt': system_prompt(project)})
@@ -147,6 +240,7 @@ def start_run(task):
             # Codex no tiene --append-system-prompt: el contexto va al inicio del primer mensaje.
             prompt = f'[Contexto de Codex Manager] {system_prompt(project)}\n\n{prompt}'
     (run_dir / 'prompt.txt').write_text(prompt)
+    (run_dir / 'request.txt').write_text(request)
     write_json(run_dir / 'meta.json', meta)
     ok, error = tmux.new_session(f'cmr-{run_id}', meta['cwd'], ['/usr/bin/python3', RUNNER, config.host_path(run_dir)])
     if not ok:
@@ -381,16 +475,15 @@ def describe_run(meta, full=True):
     run_id = meta['id']
     exit_data = exit_info(run_id)
     events, info = run_events(run_id, meta['provider'])
-    try: prompt = (config.RUNS / run_id / 'prompt.txt').read_text(errors='replace')
-    except OSError: prompt = ''
-    if meta['provider'] == 'codex' and prompt.startswith('[Contexto de Codex Manager]'):
-        prompt = prompt.split('\n\n', 1)[-1]
+    prompt = request_text(meta)
     status = run_status(meta, exit_data, info)
     data = {'id': run_id, 'provider': meta['provider'], 'project': meta['project'], 'task_id': meta.get('task_id'), 'origin': meta.get('origin'), 'chat_id': meta.get('chat_id', 'main'),
             'created_at': meta.get('created_at'), 'finished_at': (exit_data or {}).get('finished_at'), 'status': status,
             'prompt': clip(prompt, 8000), 'model': info.get('model') or meta.get('model') or '', 'result': info.get('result'),
-            'event_count': len(events), 'permission': meta.get('permission') or meta.get('sandbox'), 'resumed': bool(meta.get('resume_id'))}
+            'event_count': len(events), 'permission': meta.get('permission') or meta.get('sandbox'), 'resumed': bool(meta.get('resume_id')), 'handoff': meta.get('handoff', 0)}
     if info.get('limits'): data['limits'] = info['limits']
+    version = read_json(config.RUNS / run_id / 'versions.json', None)
+    if isinstance(version, dict): data['version'] = {k: version.get(k) or '' for k in ('base', 'commit', 'error')}
     if full:
         data['events'] = events[-400:]
         data['approvals'] = pending_approvals(run_id, meta)
@@ -407,11 +500,16 @@ def list_runs(project=None, kind='agent', limit=30, chat_id=None):
     folder = config.RUNS if kind == 'agent' else config.JOBS
     try: names = sorted((p.name for p in folder.iterdir() if p.is_dir()), reverse=True)
     except OSError: return []
-    rows = []
+    rows, since = [], 0
+    if chat_id == 'main' and project and kind == 'agent':
+        from . import chats
+        since = chats.cleared_at(project)
     for name in names:
         meta = read_json(folder / name / 'meta.json', None)
         if not meta or (project and meta.get('project') != project): continue
         if chat_id is not None and meta.get('chat_id', 'main') != chat_id: continue
+        # Los nombres son marcas de tiempo: lo anterior al vaciado del chat principal ya no se muestra.
+        if since and meta.get('created_at', 0) <= since: break
         rows.append(meta)
         if limit and len(rows) >= limit: break
     return rows
@@ -479,6 +577,11 @@ def start_job(project, action):
     argv, title = JOB_ACTIONS[action]
     meta = {'id': job_id, 'kind': 'job', 'project': project, 'action': action, 'title': title, 'argv': argv,
             'cwd': f'{config.HOST_PROJECTS}/{project}', 'created_at': time.time()}
+    if action in ('deploy', 'dev', 'build'):
+        # Lo que se publica queda como versión: el historial marca qué commit está en producción.
+        from . import gitops
+        version = gitops.record(project, f'Cambios pendientes antes de: {title.lower()}', 'pending', trailers={'Job': job_id})
+        if version['head']: meta['commit'] = version['head']
     write_json(job_dir / 'meta.json', meta)
     ok, error = tmux.new_session(f'cmj-{job_id}', meta['cwd'], ['/usr/bin/python3', RUNNER, config.host_path(job_dir)])
     if not ok:
@@ -497,7 +600,7 @@ def describe_job(meta, tail=12000):
         output += '\n' + (exit_data.get('launch_error') or 'El proceso de despliegue terminó inesperadamente')
     return {'id': meta['id'], 'project': meta['project'], 'action': meta['action'], 'title': meta.get('title', meta['action']),
             'created_at': meta.get('created_at'), 'finished_at': (exit_data or {}).get('finished_at'), 'status': status,
-            'code': (exit_data or {}).get('code'), 'output': output[-tail:]}
+            'code': (exit_data or {}).get('code'), 'output': output[-tail:], 'commit': meta.get('commit', '')}
 
 
 def job_meta(job_id):
@@ -570,10 +673,11 @@ def tick():
             if (run_dir / 'exit.json').exists():
                 _finalize(task, meta)
                 dirty = True
-        busy = {(x['project'], x.get('chat_id', 'main'), x['provider']) for x in records if x['status'] == 'working'}
+        # Un chat atiende un mensaje a la vez aunque cambie de agente: el siguiente necesita el resultado anterior.
+        busy = {(x['project'], x.get('chat_id', 'main')) for x in records if x['status'] == 'working'}
         dispatched = 0
         for task in tasks.pending_in_order(records):
-            key = (task['project'], task.get('chat_id', 'main'), task['provider'])
+            key = (task['project'], task.get('chat_id', 'main'))
             if key in busy: continue
             from . import lifecycle
             if lifecycle.deleting(task['project']): continue

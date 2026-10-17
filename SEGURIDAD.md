@@ -24,6 +24,7 @@ proyectos ni se usaron secretos o autenticadores reales para las pruebas.
 | Docker/logs | Una respuesta de Docker no puede consumir memoria ilimitada: máximo 8 MB. Logs de contenedores con rotación de 10 MB × 3. |
 | Git | Consultar/confirmar un repositorio no ejecuta fsmonitor, hooks, herramientas de diff/textconv ni programas de firma definidos por ese repositorio. El directorio de trabajo se fija al proyecto. |
 | Proyectos | El catálogo excluye enlaces simbólicos, nombres inválidos y sesiones reservadas. README se lee con límite de 16 KB y no sigue enlaces simbólicos. |
+| Plantilla Node | Una URL malformada ya no termina el servidor generado. Se rechazan traversal, enlaces a archivos fuera de public y métodos distintos de GET/HEAD; los archivos se transmiten por streaming. No se reescribieron proyectos ya creados. |
 | Voz | El decodificador admite solo los formatos de audio previstos y E/S en memoria; rechaza HLS/concat y protocolos externos. Una sola lectura/inferencia simultánea. |
 | Avisos | Cada suscripción push queda asociada a una sesión web activa. Cerrar/revocar/cambiar contraseña impide seguir enviándole información privada; las antiguas sin asociación se retiran. |
 | Salir | El cierre explícito borra también borradores/adjuntos locales. Una respuesta de polling iniciada antes de salir no vuelve a guardar datos privados en la caché. |
@@ -70,17 +71,44 @@ proyectos ni se usaron secretos o autenticadores reales para las pruebas.
 
 ## Evidencias y operación
 
+Resultados de la revisión:
+
+Despliegue completado con `docker compose up -d --build --wait --wait-timeout 90`.
+Ambos servicios saludables; URL pública y health HTTPS 200, API sin sesión 401,
+Origin ajeno 403. Se comprobó conexión pasiva al shell real sin enviar comandos
+ni guardar su contenido y bloqueo CSP de un script inline de prueba.
+
+- 116 pruebas Python y 5 pruebas Node aprobadas. Pruebas reales de autenticador,
+  terminal/historial/reconexión/error de conexión, plantilla HTTP y decodificación
+  de voz aprobadas en entornos desechables.
+- `npm audit`: cero avisos conocidos después de actualizar `source-map-js`.
+- Trivy 0.76.0: cero avisos en paquetes Python de ambas imágenes finales. Se
+  retiraron las herramientas/copias vendorizadas vulnerables de instalación y se
+  instaló la actualización Debian disponible de liblzma.
+- Debian del panel: 54 HIGH, 86 MEDIUM, 125 LOW y 4 UNKNOWN; voz: 44 HIGH,
+  58 MEDIUM, 61 LOW y 1 UNKNOWN. Son asociaciones paquete/aviso: varios paquetes
+  comparten el mismo CVE. No se detectan CRITICAL ni versiones corregidas
+  disponibles informadas por Trivy para las alertas restantes. Los resultados
+  completos se conservan; **no se puede afirmar que las imágenes tengan cero
+  vulnerabilidades**.
+
 - Capturas, pruebas, build, despliegue y escaneos: `artifacts/security-20261017/`.
 - Pruebas de terminal: `tools/verify_terminal_browser.cjs`, solo HTTPS local y
   tmux de pruebas. Prueba de autenticador: `tools/verify_auth_browser.cjs`.
 - Decodificación de voz segura: `tools/verify_speech_security.py`, ejecutada en
   la imagen de voz con formatos reales generados, sin inferencia ni audio humano.
+- Plantilla nueva: `tools/verify_starter_security.cjs`, HTTP local con URL
+  malformada, traversal, enlace fuera de public, acceso normal y health.
 - Regresiones Python: `tests/test_hardening.py`, además de autenticación, push,
   HTTP, chats, procesos, archivos y ciclo de vida existentes.
 - Respaldo privado del código/configuración previo a esta revisión:
   `/srv/platform/backups/codex-dashboard-before-security-20261017-191138/`.
   Incluye respaldo SSH y prueba de igualdad de la configuración de rootai.
   Imagen anterior: `codex-dashboard:before-security-20261017`.
+  `auth-current/` contiene copia SQLite consistente (integridad OK) y su secreto,
+  con permisos privados. El TOTP de producción está activo. El respaldo está en
+  el mismo VPS; no se probó restauración externa. Al restaurar, revocar sesiones
+  antiguas y revisar los códigos de recuperación.
 - Actualizar dependencias e imágenes con nuevas revisiones de seguridad y repetir
   las pruebas antes de desplegar. No borrar `.cm-secret` ni `web-auth.sqlite3`.
   No instalar dependencias dentro del contenedor en ejecución: reconstruir la

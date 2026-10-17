@@ -45,6 +45,8 @@ DEFAULT_SETTINGS = {
     'codex_sandbox': os.environ.get('CODEX_SANDBOX', 'full'),
     'claude_model': os.environ.get('CLAUDE_MODEL', ''),
     'codex_model': os.environ.get('CODEX_MODEL', ''),
+    # on: cada acción (agente, editor, archivos, despliegue) queda como un commit propio.
+    'auto_commit': os.environ.get('AUTO_COMMIT', 'on'),
 }
 CLAUDE_PERMISSIONS = ('ask', 'auto', 'edits')
 CODEX_SANDBOXES = ('full', 'workspace', 'read-only')

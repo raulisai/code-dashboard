@@ -2,9 +2,42 @@
 
 > Leer antes de trabajar. Actualizar las secciones 0, 4 y 5 al terminar.
 
-Última actualización: 2026-10-17, 19:15 Europe/Berlin. Autor: Codex.
+Última actualización: 2026-10-17, 20:15 Europe/Berlin. Autor: Claude (chats: borrar + contexto compartido).
 
 ## 0. Estado en una línea
+
+**Última sesión (Claude): borrar chats y cambiar Claude ⇄ Codex sin perder el hilo.
+Publicado.** Papelera en Agente → Chat: elimina chats adicionales (cancela su cola,
+no toca archivos) y en el principal lo **vacía**. Claude y Codex **comparten el
+contexto de cada chat**: al cambiar, el agente recibe un resumen de las peticiones
+del chat que no vio; un mensaje a la vez por chat aunque cambie de agente.
+**138 Python OK** en el árbol combinado (122 en la imagen publicada) y
+`CHAT_DELETE_BROWSER_OK` en Chromium 360/390/768/1440 contra la URL real con API
+simulada. **Ojo:** la imagen publicada se construyó desde HEAD + este parche (en
+`/tmp/cm-deploy`, ya borrado), **sin** el versionador que otro agente Claude estaba
+terminando en paralelo. El árbol de trabajo tiene ambos; el próximo
+`docker compose up -d --build` desde el proyecto publicará los dos juntos.
+
+**Nueva decisión: servidor autónomo, sin confirmaciones rutinarias.** El usuario
+prioriza versiones, respaldo y recuperación. Claude configurado en `auto` sin
+prompts interactivos; Codex sigue en `full`. Afecta a nuevas ejecuciones, no se
+interrumpieron agentes ya activos. AGENTS.md registra esta autorización.
+Respaldo diario instalado (timer systemd) y primera copia completa verificada:
+`/srv/platform/backups/codex-dashboard-auto/`, retención de 14 copias completas.
+
+**Última sesión: revisión de seguridad y reparación de terminal publicadas.**
+Se corrigió el destino de pane tmux en historial (`=session:`), se añadió salida
+al directo y reconexión automática/manual con errores visibles. Se reforzaron
+Origin, CSP, límites HTTP/WebSocket/PTY, subida, push, Git, plantillas y voz;
+contenedores con raíz de solo lectura, sin capabilities y registros limitados.
+**116 pruebas Python + 5 Node aprobadas** y verificaciones reales aisladas de
+TOTP, terminal, plantilla y audio. Producción: ambos servicios healthy, HTTPS
+200, API anónima 401 y Origin ajeno 403; conexión pasiva al shell real correcta.
+**El autenticador real ya está activado**, comprobado solo mediante su estado;
+no se leyó ni sustituyó el secreto. Sesiones recordadas: 180 días.
+No es una garantía de invulnerabilidad: persisten alertas Debian sin versión
+corregida informada y el panel conserva privilegios administrativos por diseño.
+Informe: `SEGURIDAD.md`; evidencia: `artifacts/security-20261017/`.
 
 **Última ampliación: varios chats independientes por proyecto.** Agente incluye
 selector de chat, creación con nombre, renombrado, indicadores de actividad y
@@ -21,8 +54,8 @@ navegador se repitió después del último despliegue y terminó correctamente.
 implementados, probados y publicados.** El usuario eligió contraseña + app
 autenticadora. Al entrar por primera vez debe vincular su app y confirmar un
 código; antes de hacerlo no se permite acceder a proyectos ni ejecutar acciones.
-**Pendiente del usuario: completar esa vinculación y guardar los diez códigos de
-recuperación.** A las 19:05 todavía no había un TOTP vinculado en producción.
+**Estado histórico a las 19:05:** faltaba vincular TOTP. La revisión posterior
+confirmó que ya está activado. Conservar los códigos de recuperación en privado.
 Marcar «Recordar este dispositivo durante 180 días» para el plazo largo; sin
 marcar, cookie de navegador con máximo 12 horas. Cookies antiguas invalidadas y
 Basic Auth retirado. **93 pruebas Python + 5 Node OK**, navegador real aislado a
@@ -86,8 +119,11 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
 
 ## 3. Decisiones del usuario (conservar)
 
-- Claude: ediciones del proyecto aceptadas automáticamente y otras acciones
-  aprobadas desde la web. **No usar `bypassPermissions`.** El modo habitual es `ask`.
+- Claude: decisión actual del usuario: autonomía sin confirmaciones rutinarias.
+  Se cambió de `ask` a `auto` (clasificador, sin prompts interactivos); no se usa
+  `bypassPermissions`. Codex conserva `full`. La anterior preferencia `ask` queda
+  sustituida. El clasificador aún puede rechazar una operación; no implica una
+  solicitud humana automática.
 - Codex: conservar acceso completo, equivalente a `codex --yolo`.
 - Está autorizado e instalado el servicio systemd que mantiene tmux en el host.
 - Para pruebas acotadas: Claude con aprobación web o sin herramientas;
@@ -100,12 +136,69 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
 
 ## 4. Pendientes y límites de validación
 
+### Borrar chats y contexto compartido Claude ⇄ Codex (sesión actual)
+
+- No se lanzó un turno real de modelo para probar el traspaso (no gastar cuota):
+  el resumen se generó en seco con el historial real de `codex-dashboard/main`
+  (7 peticiones, ~8 000 caracteres, 0,07 s) y con pruebas automáticas. Falta que
+  el usuario lo use en su celular: escribir a Codex, cambiar a Claude y seguir.
+- El resumen incluye petición, respuesta final (≤2 500 car.), archivos editados y
+  commit de `versions.json`; no incluye la salida de comandos. Si hiciera falta
+  más detalle, el agente debe mirar Git/archivos (el encabezado se lo pide).
+- La imagen publicada **no** contiene el versionador. Cuando el agente del chat
+  «add features» termine, desplegar desde `/srv/projects/codex-dashboard` (incluye
+  ambos cambios) y repetir pruebas. `bin/cm-runner.py` del árbol ya prefiere
+  `request.txt` para que los commits del versionador no incluyan el resumen.
+- Rollback: imagen `codex-dashboard:before-chat-handoff-20261017`; copia de los
+  archivos tocados y del parche en
+  `/srv/platform/backups/codex-dashboard-before-chat-handoff-20261017/`.
+
+### Autonomía y respaldo
+
+- Timer diario `codex-dashboard-backup.timer`, 04:15 hora del servidor con hasta
+  15 minutos de dispersión. Script `/srv/platform/bin/backup-codex-dashboard.py`.
+  Copias privadas código+Git+config (incluye secretos; nunca publicar), SQLite
+  consistente, SHA256 y marcador COMPLETE. Conserva 14 copias completas; las
+  incompletas no cuentan ni se usan para recuperar. Respaldos manuales intactos.
+- Recuperación: verificar sha256.json, extraer source.tgz en directorio nuevo,
+  verificar history.bundle, comparar antes de sustituir. Restaurar SQLite junto
+  con su secreto y revocar sesiones antiguas. No sobrescribir agentes activos.
+- Es protección local frente a errores; no cubre pérdida completa del VPS. No hay
+  copia externa configurada. Hay cambios de versionado en curso en el árbol de
+  trabajo; se preservaron, no se publicaron como parte de este ajuste operativo.
+
+### Seguridad y terminal (revisión del 17 de octubre)
+
+- Cambios terminados, probados y desplegados. Falta confirmar la experiencia en
+  el teléfono físico del usuario; se verificó Chromium a 360/390/1440 px.
+- Trivy: cero alertas Python, cero CRITICAL y ninguna corrección disponible
+  informada para las alertas Debian restantes. Panel: 54 HIGH, 86 MEDIUM,
+  125 LOW, 4 UNKNOWN; voz: 44 HIGH, 58 MEDIUM, 61 LOW, 1 UNKNOWN. Son
+  asociaciones paquete/aviso, no vulnerabilidades distintas. Mantener revisión
+  de parches; no afirmar cero vulnerabilidades ni explotación demostrada.
+- Terminal, Docker y agentes conservan control administrativo deliberadamente.
+  Montar docker.sock como `:ro` no restringe las operaciones de su API. Un acceso
+  privado/VPN sería una protección adicional futura, no está implementado.
+- SSH dv1/root ahora exige claves. Se comprobó clave existente y configuración
+  válida; SSH fue recargado. La configuración efectiva completa de rootai quedó
+  exactamente igual. No modificar su cuenta ni su acceso de recuperación.
+- Respaldo privado previo y copia consistente actual de autenticación en
+  `/srv/platform/backups/codex-dashboard-before-security-20261017-191138/`;
+  `auth-current/` conserva juntos secreto y SQLite (integridad OK). Es el mismo
+  VPS: restauración externa no probada. Una restauración debe revocar sesiones
+  antiguas y revisar recuperación. Nunca imprimir estos archivos.
+- Se eliminaron contenedores, credenciales y tmux de pruebas; no se tocaron
+  proyectos ajenos. Claude `ask`, Codex `full` y proveedor Claude conservados.
+
 ### Chats por proyecto (sesión actual)
 
 - Implementación terminada. Se crean desde **Agente → + Nuevo chat** y se cambian
   con el selector **Chat**. El lápiz renombra los chats adicionales; el principal
-  conserva su nombre. No se añade borrado de chats: el historial se conserva.
-- Cada chat/proveedor tiene contexto propio y procesa sus mensajes en orden;
+  conserva su nombre. **Actualizado:** la papelera elimina chats (o vacía el
+  principal) por petición del usuario; las ejecuciones quedan en disco y el
+  registro en `chats-archive.json`. No hay botón de restaurar chats eliminados.
+- **Actualizado:** el contexto es por chat y compartido entre Claude y Codex (cada
+  proveedor con su sesión + resumen de traspaso). Un mensaje a la vez por chat;
   chats distintos pueden ejecutar tareas en paralelo. **Los archivos, despliegues
   y reglas Siempre son compartidos por proyecto**; no se han creado worktrees ni
   sandboxes independientes. Evitar cambios simultáneos en el mismo archivo.
@@ -118,9 +211,9 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
 
 ### Autenticador y sesiones de seis meses (última sesión)
 
-- Implementación terminada y desplegada. **El usuario debe recargar la web,
-  iniciar sesión, generar el QR/clave, vincular su app TOTP, confirmar un código y
-  guardar los códigos de recuperación.** Para los seis meses debe marcar la opción
+- Implementación terminada y desplegada. **TOTP real ya vinculado**, confirmado
+  por estado durante la revisión de seguridad sin acceder al secreto. Conservar
+  los códigos de recuperación. Para los seis meses debe marcar la opción
   de recordar dispositivo en la vinculación o en un login posterior. No se generó
   ni vinculó un secreto TOTP real por cuenta del usuario. El alta es obligatoria
   para acceder al panel; la sesión provisional dura diez minutos y solo sirve
@@ -222,6 +315,73 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Borrar chats y contexto compartido entre agentes
+
+- `cm/chats.py`: `delete()` con `tasks.LOCK` + `runs.STATE_LOCK`; rechaza si hay una
+  petición en curso, cancela las de la cola («Cancelada al eliminar el chat»),
+  olvida sesiones del chat y archiva fila+sesiones en `chats-archive.json`. En
+  `main` vacía: guarda la fecha y `runs.list_runs(chat_id='main')` oculta lo previo.
+  API: `POST /api/agent/chats {action: 'delete', project, chat_id}` (sesión+TOTP+Origin).
+- `cm/runs.py`: `handoff_context()` resume las peticiones del chat posteriores al
+  último turno incluido en la sesión guardada del agente elegido (o todo el chat
+  desde `_reset_at` si no tiene sesión); `request.txt` guarda el mensaje limpio y
+  `meta.handoff` el número resumido. Planificador: clave proyecto/chat (antes
+  proyecto/chat/proveedor). **Reiniciar** borra las sesiones de ambos proveedores
+  y fija `_reset_at`. `describe_run` muestra `request.txt` y `handoff`.
+- `Agent.jsx`: papelera (Eliminar chat / Vaciar chat principal) con confirmación,
+  limpieza de borrador/adjuntos/proveedor locales, «X retoma el chat», marca
+  «retoma el chat» en la respuesta, «Se pondrá en cola» con cualquier agente
+  ocupado. CSS: oculta la etiqueta «Chat» bajo 400 px para no estrechar el selector.
+- Pruebas: 7 nuevas en `tests/test_chats.py` (traspaso en ambos sentidos, mismo
+  agente sin resumen, sesión perdida/reinicio, serialización entre agentes,
+  borrar, vaciar, HTTP/Origin) y `test_core` adaptado a la serialización por chat.
+  138 Python OK (árbol combinado con el versionador), 122 OK en el árbol publicado,
+  build Vite y tests Node OK. `tools/verify_chat_delete_browser.cjs`:
+  **CHAT_DELETE_BROWSER_OK**; capturas en `artifacts/chat-delete-20261017/`.
+- Despliegue: `docker compose up -d --build --no-deps --wait dashboard` desde
+  `/tmp/cm-deploy` (HEAD + `cm/projects.py` publicado + parche). Healthy; HTTPS
+  `/`, `/health`, `/projects` 200; chats sin sesión 401; borrar con Origin ajeno 403.
+  speech, Traefik, agentes del host y la ejecución del otro agente no se tocaron.
+
+### Autonomía autorizada y copias diarias
+
+- Ajustes persistentes actualizados por runs.save_settings en el servicio vivo:
+  claude_permission=auto, codex_sandbox=full. Sin cambiar procesos ya iniciados,
+  segundo factor, reglas de acceso web ni cuenta rootai.
+- Instalados script y servicio/timer de respaldo privado. Primera copia completada;
+  se comprueban hash, extracción aislada, bundle y SQLite sin revelar su contenido.
+  Son cambios operativos/documentales: no se reconstruyó código de la app ni se
+  mezclaron los cambios de versionado concurrentes con un nuevo despliegue.
+
+### Revisión de seguridad y reparación de terminal
+
+- `cm/websecurity.py`: Origin canónico, cabeceras CSP/HSTS y protección de
+  respuestas tempranas, errores uniformes y auditoría sin cuerpos ni secretos.
+- `cm/terminal.py`: límites de conexiones/mensajes/colas, PTY con contrapresión,
+  escritura parcial y limpieza segura; revocación de sesión periódica. `cm/tmux.py`
+  corrige destino de pane. Frontend: estado previo, reintentos, pausa de historial
+  visible y vuelta al directo. No se mata el shell del usuario al desconectar.
+- Límites de JSON, multipart y respuestas Docker; push vinculado a sesión vigente;
+  logout borra borradores privados. Git evita hooks/fsmonitor/diff externos;
+  plantilla Node impide traversal y enlaces externos; decodificador voz restringe
+  formatos/protocolos y serializa lectura e inferencia.
+- Imágenes reconstruidas con actualizaciones disponibles; pip/ensurepip retirados
+  del runtime. Compose: raíz readonly, tmpfs, cap_drop ALL, logs rotados y rate
+  limit Traefik. Dependencia source-map-js corregida; npm audit cero avisos.
+- 116 Python y 5 Node OK; después del último ajuste de plantilla, 48 regresiones
+  centrales OK. Navegador real aislado: TOTP/recuperación/revocación/180 días,
+  limpieza de borradores, terminal con Bash real, historial, reconexión y fallo
+  previo. Audio WAV/WebM/MP4 real con modelo simulado; HLS/concat rechazados sin
+  conexiones salientes. HTTP real de plantilla: traversal/symlinks rechazados y
+  URL malformada sin caída. Evidencias completas en artifacts/security-20261017.
+- Desplegado con `docker compose up -d --build --wait --wait-timeout 90`.
+  curl TLS estricto comprobó web/health/ruta shell 200, API 401, Origin ajeno403
+  y cabeceras. Ambos servicios healthy. Chromium público verificó bloqueo CSP
+  de script inline; shell real verificado con attach pasivo de solo lectura,
+  sin enviar comandos ni registrar su contenido. Docker y voz interna OK.
+- SSH: validación sshd y recarga; igualdad efectiva de rootai documentada en
+  `ssh-verification.json`. Informe y límites del escaneo en `SEGURIDAD.md`.
 
 ### Conversaciones múltiples por proyecto
 

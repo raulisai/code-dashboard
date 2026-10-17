@@ -19,7 +19,7 @@ const TOOLS = [
   {key: 'shell', label: 'Terminal', icon: SquareTerminal},
   {key: 'console', label: 'Consola', icon: ScrollText},
   {key: 'deploy', label: 'Desplegar', icon: Rocket},
-  {key: 'git', label: 'Git', icon: GitBranch},
+  {key: 'git', label: 'Versiones (Git)', short: 'Versiones', icon: GitBranch},
 ];
 const MOBILE_TABS = ['agent', 'preview', 'files', 'shell'];
 
