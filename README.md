@@ -200,7 +200,41 @@ Las rutas y enlaces se confinan al proyecto. Los guardados verifican una versió
 opaca del archivo para detectar cambios del agente y evitar sobrescrituras.
 Los archivos recortados por tamaño se muestran en modo de solo lectura.
 
-Git muestra estado, diferencias e historial y permite crear commits locales.
+### Versiones (Git)
+
+La herramienta **Versiones** (Más → Versiones en el celular) convierte Git en un
+versionador. **Cada acción queda como un commit propio**: cada respuesta de
+Claude/Codex (con lo pendiente de antes guardado aparte), cada guardado del
+editor, crear/mover/borrar/subir archivos y cada despliegue. Los commits llevan
+trailers `Codex-Manager-Action/Provider/Run/Restores/Reverts` para mostrar quién
+hizo cada cambio. Si un proyecto no tenía repositorio, la primera acción lo crea.
+Se desactiva en Ajustes → Versiones (Git).
+
+- **Historial**: línea de tiempo con autor (Claude, Codex, editor…), archivos y
+  líneas, versión actual y **En producción** (último despliegue desde el panel).
+  El detalle muestra los archivos cambiados, sus diferencias y **Comparar con la
+  actual** (lo que cambiaría al restaurar).
+- **Deshacer último cambio** (rollback rápido): vuelve a la versión anterior y
+  se puede repetir para seguir retrocediendo. Con cambios sin guardar, primero
+  deshace esos cambios (quedan guardados en el historial).
+- **Restaurar esta versión**: deja todos los archivos como en esa versión con un
+  commit nuevo; nada se borra del historial, así que siempre se puede volver.
+- **Deshacer solo este cambio**: `git revert` de una versión concreta conservando
+  lo posterior. También desde el chat: «Deshacer estos cambios» bajo cada respuesta.
+- **Ramas**: alternativas del proyecto. Crear (desde la actual o desde cualquier
+  versión), ver su historial (marca lo exclusivo de cada una), cambiar, integrar
+  (merge sin fast-forward; con conflicto no se integra nada) y eliminar (queda
+  archivada en `refs/codex-manager/archivadas/`).
+- Restaurar, deshacer, cambiar o integrar ofrecen **… y publicar** para desplegar
+  a la vez. Se bloquean mientras un agente trabaja o hay un despliegue en curso.
+
+Seguridad: antes de cambiar archivos se confirma lo pendiente; los archivos
+ignorados que otra versión sobrescribiría (p. ej. `.env`) se copian en
+`.git/codex-manager/respaldos/`. `.git/info/exclude` evita versionar `.env*`,
+claves, `node_modules`, adjuntos del chat y archivos de más de 50 MB, sin tocar
+el `.gitignore` del proyecto. Panel y runner del host se coordinan con un flock
+en `.git/codex-manager.lock`. Código: `cm/vcs.py` (núcleo) y `cm/gitops.py`.
+
 El panel no hace push. Los trabajos de despliegue muestran su salida en vivo y
 continúan aunque se cierre el navegador o se reinicie el contenedor del panel.
 Los contenedores se asocian por la etiqueta de proyecto Compose; Traefik y la

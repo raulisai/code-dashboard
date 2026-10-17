@@ -2,9 +2,22 @@
 
 > Leer antes de trabajar. Actualizar las secciones 0, 4 y 5 al terminar.
 
-Última actualización: 2026-10-17, 20:15 Europe/Berlin. Autor: Claude (chats: borrar + contexto compartido).
+Última actualización: 2026-10-17, 21:05 Europe/Berlin. Autor: Claude (versionador Git).
 
 ## 0. Estado en una línea
+
+**Última sesión (Claude): Git convertido en versionador, publicado.** Cada acción
+es un commit propio (respuesta de agente, editor, archivos, subidas, despliegue),
+con «Deshacer último cambio» (rollback rápido repetible), restaurar cualquier
+versión, deshacer solo un cambio, comparar, ramas como alternativas (crear desde
+cualquier versión, ver, cambiar, integrar, eliminar archivando) y opción «… y
+publicar». Chip «Versión xxx guardada · Ver · Deshacer estos cambios» bajo cada
+respuesta del chat. Ajuste Ajustes → Versiones (Git), activo por defecto.
+**139 Python + 5 Node OK**; `VERSIONS_BROWSER_OK` en Chromium 360/390/768/1440
+contra una instancia aislada con Git real. Producción: ambos servicios healthy,
+HTTPS 200, API anónima 401, Origin ajeno 403. **Este proyecto ya es un repositorio
+Git** (`main`; base `12eb60d`, versionador `286a2f9`). Ya funciona en real: la
+petición `20261017-185758-d709ad` generó sola «Cambios pendientes antes de Claude».
 
 **Última sesión (Claude): borrar chats y cambiar Claude ⇄ Codex sin perder el hilo.
 Publicado.** Papelera en Agente → Chat: elimina chats adicionales (cancela su cola,
@@ -17,6 +30,7 @@ simulada. **Ojo:** la imagen publicada se construyó desde HEAD + este parche (e
 `/tmp/cm-deploy`, ya borrado), **sin** el versionador que otro agente Claude estaba
 terminando en paralelo. El árbol de trabajo tiene ambos; el próximo
 `docker compose up -d --build` desde el proyecto publicará los dos juntos.
+**Resuelto a las 20:52:** se publicaron juntos (commit `286a2f9`).
 
 **Nueva decisión: servidor autónomo, sin confirmaciones rutinarias.** El usuario
 prioriza versiones, respaldo y recuperación. Claude configurado en `auto` sin
@@ -133,8 +147,34 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   recordar dispositivos hasta seis meses. Mantener el segundo factor obligatorio,
   las sesiones revocables y los códigos de recuperación. No habilitar Basic Auth
   ni vincular automáticamente un autenticador de pruebas a su cuenta real.
+- Versiones: el usuario quiere **un commit por cada acción**, ver ramas como
+  alternativas y volver a cualquier versión con rollback rápido. Mantener
+  `auto_commit=on` por defecto y **no reescribir historial**: restaurar/deshacer
+  crean commits nuevos; nada de `reset --hard`, force ni borrar ramas sin archivar.
 
 ## 4. Pendientes y límites de validación
+
+### Versionador Git (sesión actual)
+
+- Publicado y probado con Git real en una instancia aislada; **falta que el
+  usuario lo pruebe en su celular** (Más → Versiones). No se hicieron
+  restauraciones, ramas ni merges en proyectos reales.
+- **Proyectos con repo propio** (cuidemonos en `produccion`, poleana-game en
+  `preproduccion`, guitar-hero-app en `main`): las acciones del panel añadirán
+  commits a su rama actual. No hay push; si el usuario hace push después, esos
+  commits viajarán también. cuidemonos tenía `.claude/settings.local.json`
+  modificado (archivo ya versionado allí): entrará en su próximo commit.
+- mapachanel y news no tienen repo: la primera acción hará `git init` con
+  exclusiones seguras (`.env*`, claves, dependencias, `.codex-manager/`, >50 MB).
+- Comandos de terminal no generan commit por comando: se guardan como «Cambios
+  pendientes antes de …» en la siguiente acción. Con dos chats trabajando a la
+  vez en el mismo proyecto, el commit final de uno puede incluir cambios del otro.
+- Ejecuciones lanzadas antes del despliegue (runner antiguo) no tienen
+  `versions.json`. Filtros LFS/merge drivers de `.git/config` local no se
+  neutralizan (solo los configura quien ya tiene acceso al host).
+- Al cerrar la sesión seguía trabajando otra petición en paralelo sobre este
+  proyecto: «añadir un repo Git al crear proyectos y validarlo» (chat main). No
+  se tocó; revisar su resultado en el historial de Versiones.
 
 ### Borrar chats y contexto compartido Claude ⇄ Codex (sesión actual)
 
@@ -315,6 +355,49 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Versionador Git (commit por acción, ramas y rollback)
+
+- `cm/vcs.py` (solo stdlib, usado por panel y `bin/cm-runner.py`): `snapshot()`
+  hace `add -A` + commit con trailers `Codex-Manager-Action/Provider/Run/Chat/
+  Restores/Reverts/Job`; init automático con identidad de respaldo y bloque en
+  `.git/info/exclude`; excluye >50 MB; flock `.git/codex-manager.lock` entre
+  contenedor y host; reintento ante `index.lock`; se niega con merge/rebase a medias.
+- `cm/gitops.py`: status (rama, sin rama, operación, pendientes, destino de
+  deshacer, despliegue), log paginado con estadísticas y rama a rama
+  (`only_here`), detalle con archivos ±, diff de versión/comparación, ramas con
+  ahead/behind. Acciones: commit, init, restore (`read-tree -u --reset` + commit
+  nuevo), undo (sigue cadenas `Restores`; con pendientes vuelve a HEAD),
+  revert (`--no-commit`, aborta si choca), branch-create/switch/merge(`--no-ff`,
+  aborta en conflicto)/delete (archiva en `refs/codex-manager/archivadas/`).
+  Antes de cambiar archivos: bloqueo si hay agente/despliegue, commit de lo
+  pendiente y copia de ignorados sobrescribibles en `.git/codex-manager/respaldos/`.
+  Revisiones solo sha hex o rama existente; nombres de rama validados.
+- Runner: versión «antes» y «después» de cada agente, cuerpo con petición y
+  respuesta final; `versions.json` por ejecución (`base`, `commit`). `runs.py`:
+  `auto_commit` en ajustes, `title`/`versioning` en meta, commit previo y `commit`
+  en trabajos deploy/dev/build, `version` en `describe_run`.
+- `app.py`: `GET /api/git`, `/api/git/log`, `/api/git/commit`, `/api/git/branches`,
+  `/api/git/diff?rev&compare`; `POST /api/git` con `deploy: true` para «… y
+  publicar». Editor, operaciones de archivos y subidas al proyecto crean commit
+  (antes guardan lo pendiente aparte); adjuntos del chat no se versionan.
+- Interfaz `workspace/Git.jsx` («Versiones»): cabecera con rama, sha, producción
+  y Deshacer; pestañas Historial/Ramas/Cambios; hoja de detalle; confirmaciones
+  con «… y publicar». `Agent.jsx`: chip de versión por respuesta. Ajustes:
+  Versiones (Git). Etiqueta «Versiones (Git)» en workspace y Proyectos.
+- Pruebas `tests/test_versions.py` (17): init sin secretos, commit por acción,
+  desactivar, deshacer repetido y con pendientes, restaurar y volver, copia de
+  ignorados, revert y conflicto limpio, ramas/merge/conflicto/borrado, bloqueo
+  con agente, archivos grandes, sin ejecutar textconv/diff externo/fsmonitor,
+  runner antes/después, despliegue marcado, HTTP con auth/Origin/deploy.
+- `tools/versions_fixture.py` + `tools/verify_versions_browser.cjs`: instancia
+  HTTPS aislada en contenedor desechable (tmpfs, sin proyectos reales) y flujo
+  completo en Chromium. Capturas: `artifacts/versions-20261017/`.
+- Corrección tras desplegar: el contenedor no tenía el ignore global del host y
+  habría versionado `.claude/settings.local.json`; añadido a exclusiones seguras.
+- Despliegue `docker compose up -d --build --wait`; respaldo previo: imagen
+  `codex-dashboard:before-versions-20261017` y commit `12eb60d`. Un `/health`
+  devolvió 404 unos segundos mientras Traefik re-registraba; después 200.
 
 ### Borrar chats y contexto compartido entre agentes
 
@@ -700,7 +783,7 @@ no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyec
   `docker compose up -d --wait --wait-timeout 90` (speech necesita cargar el modelo).
   El dashboard conserva sus límites y el sistema de agentes anterior.
 
-- Código: `/srv/projects/codex-dashboard` (no es un repositorio Git).
+- Código: `/srv/projects/codex-dashboard`, repositorio Git local desde el 17/10 (`main`, sin remoto).
 - Datos: `/home/dv1/.config/codex-automation/` ↔ `/config`.
 - Proyectos: `/srv/projects` ↔ `/projects`.
 - tmux: `/tmp/tmux-1002/default` ↔ `/tmux/default`; keepalive `cm-keepalive`.
