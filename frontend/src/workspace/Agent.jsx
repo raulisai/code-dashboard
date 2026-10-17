@@ -94,6 +94,8 @@ function ChatConversation({project, active, chatId, attachments = true}) {
   const storedProvider = providerKey(name, chatId);
   const [provider, setProvider] = useState(() => { try { return localStorage.getItem(storedProvider) || null; } catch { return null; } });
   const [text, setText] = useState(() => { try { return localStorage.getItem(draftKey(name, chatId)) || ''; } catch { return ''; } });
+  const modelKey = `${storedProvider}-models`;
+  const [models, setModels] = useState(() => { try { return JSON.parse(localStorage.getItem(modelKey) || '{}') || {}; } catch { return {}; } });
   const attachmentKey = `${draftKey(name, chatId)}-files`;
   const [files, setFiles] = useState(() => { try { const stored = JSON.parse(localStorage.getItem(attachmentKey)); return Array.isArray(stored) ? stored.filter(path => typeof path === 'string') : []; } catch { return []; } }), [uploading, setUploading] = useState(false), [sending, setSending] = useState(false);
   useEffect(() => { try { files.length ? localStorage.setItem(attachmentKey, JSON.stringify(files)) : localStorage.removeItem(attachmentKey); } catch { /* sin almacenamiento */ } }, [files, attachmentKey]);
@@ -121,6 +123,12 @@ function ChatConversation({project, active, chatId, attachments = true}) {
   usePolling(async () => { try { await load(); } catch (err) { setError(err.message); } }, () => (busy ? 1200 : 4000), [name, busy, active]);
 
   const nextProvider = provider || data?.runs.at(-1)?.provider || data?.settings?.default_provider || 'claude';
+  const selectedModel = models[nextProvider] || '';
+  const modelOptions = [...new Set([data?.settings?.[`${nextProvider}_model`], ...(nextProvider === 'claude' ? ['opus', 'sonnet', 'haiku'] : []), ...(data?.runs || []).filter(run => run.provider === nextProvider).map(run => run.model)].filter(Boolean))];
+  const chooseModel = value => {
+    const next = {...models, [nextProvider]: value}; setModels(next);
+    try { localStorage.setItem(modelKey, JSON.stringify(next)); } catch { /* sin almacenamiento */ }
+  };
   const chooseProvider = value => { setProvider(value); try { localStorage.setItem(storedProvider, value); } catch { /* sin almacenamiento */ } };
   useEffect(() => { try { text ? localStorage.setItem(draftKey(name, chatId), text) : localStorage.removeItem(draftKey(name, chatId)); } catch { /* sin almacenamiento */ } }, [text, name, chatId]);
 
@@ -148,7 +156,7 @@ function ChatConversation({project, active, chatId, attachments = true}) {
     if (files.length) message += `\n\nArchivos adjuntos (rutas dentro del proyecto):\n${files.map(path => `- ${path}`).join('\n')}`;
     setSending(true);
     try {
-      await post('/api/agent/send', {project: name, chat_id: chatId, provider: nextProvider, text: message.trim()});
+      await post('/api/agent/send', {project: name, chat_id: chatId, provider: nextProvider, model: selectedModel, text: message.trim()});
       try { localStorage.removeItem(draftKey(name, chatId)); localStorage.removeItem(attachmentKey); } catch { /* sin almacenamiento */ }
       setText(''); setFiles([]); stick.current = true;
       rev.current = '';
@@ -198,6 +206,15 @@ function ChatConversation({project, active, chatId, attachments = true}) {
       <span className="conv-state" title={sessionId ? `Sesión ${sessionId}` : ''}>{!hasContext ? 'Conversación nueva' : switching ? `${providerLabel(nextProvider)} retoma el chat` : 'Conversación continua'}</span>
       {hasContext && <button className="btn small" onClick={reset} disabled={!!busy} title="Reiniciar el contexto de este chat para Claude y Codex"><RotateCcw size={14}/>Reiniciar</button>}
     </div>
+
+    {name !== '_general' && <div className="project-model-bar">
+      <label htmlFor={`model-${chatId}`}>Modelo de {providerLabel(nextProvider)}</label>
+      <input id={`model-${chatId}`} className="input" list={`models-${chatId}`} value={selectedModel} onChange={event => chooseModel(event.target.value)} maxLength={80}
+        placeholder={data?.settings?.[`${nextProvider}_model`] || 'Predeterminado'} aria-label="Modelo del agente" autoComplete="off" spellCheck={false}/>
+      <datalist id={`models-${chatId}`}>{modelOptions.map(value => <option key={value} value={value}/>)}</datalist>
+      {selectedModel && <button className="btn small" onClick={() => chooseModel('')}>Predeterminado</button>}
+      <small>Para tu próximo mensaje</small>
+    </div>}
 
     <div className="timeline" ref={scroller} onScroll={onScroll}>
       {!data ? <div className="timeline-loading"><Spinner/> Cargando conversación…</div>

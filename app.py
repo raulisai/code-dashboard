@@ -194,8 +194,8 @@ async def push_post(request):
 
 # ---------------------------------------------------------------- agente
 
-def add_task(project, provider, title, details, priority='media', origin='task', chat_id='main'):
-    task = tasks.new_task(project, provider, title, details, priority, origin, chat_id)
+def add_task(project, provider, title, details, priority='media', origin='task', chat_id='main', model=''):
+    task = tasks.new_task(project, provider, title, details, priority, origin, chat_id, model)
     with tasks.LOCK:
         chats.require(project, chat_id)
         if lifecycle.deleting(project) or (project != config.GENERAL and project not in projects.project_names()):
@@ -230,9 +230,13 @@ async def agent_send(request):
     if provider not in config.PROVIDERS: return fail('Agente inválido')
     if not text: return fail('Escribe un mensaje')
     if len(text) > 100_000: return fail('El mensaje es demasiado largo (máx. 100 000 caracteres)')
+    model = data.get('model', '')
+    if not isinstance(model, str) or (model and not re.fullmatch(r'[A-Za-z0-9._:\[\]-]{1,80}', model)):
+        return fail('Modelo inválido (máximo 80 caracteres, sin espacios)')
+    if project == config.GENERAL and model: return fail('El agente general usa el modelo de Ajustes')
     priority = data.get('priority') if data.get('priority') in PRIORITIES else 'media'
     title = text.splitlines()[0][:200]
-    try: task = await blocking(add_task, project, provider, title, text, priority, 'chat', data.get('chat_id', 'main'))
+    try: task = await blocking(add_task, project, provider, title, text, priority, 'chat', data.get('chat_id', 'main'), model)
     except ValueError as exc: return fail(str(exc), 404)
     return reply({'message': f'Enviado a {runs.label(provider)}', 'task': task}, 201)
 

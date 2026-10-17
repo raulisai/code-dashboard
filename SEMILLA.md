@@ -2,9 +2,15 @@
 
 > Leer antes de trabajar. Actualizar las secciones 0, 4 y 5 al terminar.
 
-Última actualización: 2026-10-17, 23:21 Europe/Berlin. Autor: Codex (refinado del agente general).
+Última actualización: 2026-10-17, 23:29 Europe/Berlin. Autor: Codex (modelos por chat de proyecto).
 
 ## 0. Estado en una línea
+
+**Selector de modelo por chat de proyecto publicado:** Proyecto → Agente muestra modelo
+por proveedor, con sugerencias y texto libre, y vuelta a Predeterminado. No se
+muestra en el agente general. Se recuerda en navegador por chat/proveedor y se
+guarda con cada mensaje, sin alterar tareas anteriores ni los ajustes globales.
+**160 Python + 11 frontend OK**; build Vite correcto.
 
 **Refinado del agente general publicado:** esfera compartida `Orb.jsx` en barra y vista
 ampliada, ondas/partículas/órbitas, viaje y cambios de tamaño suaves. Sin selector
@@ -187,6 +193,17 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Modelos por chat de proyecto
+
+- El identificador debe estar disponible para la cuenta del proveedor: no se
+  consulta catálogo remoto ni se lanzan modelos para validarlo. Las sugerencias
+  incluyen alias Claude, modelo configurado e historial del chat. Se permite ID
+  manual. Los errores de disponibilidad los informa el proveedor al ejecutar.
+- Preferencia recordada por navegador/chat/proveedor; vacío usa Ajustes al iniciar
+  la tarea. El cambio no reinicia conversación ni modifica ejecuciones anteriores.
+- Cola TSV añade columna 15 `model`; lectores aceptan filas históricas sin ella.
+- Respaldo previo: `/srv/platform/backups/codex-dashboard-auto/20261017T212744.180803Z/`.
 
 ### Refinado del agente general
 
@@ -435,6 +452,25 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Selector de modelo por proyecto
+
+- ChatConversation muestra input/datalist accesible por proveedor; persiste las
+  selecciones por chat y las envía en cada POST. No cambia el agente general.
+- app.agent_send valida tipo/sintaxis/longitud y rechaza overrides en _general.
+  tasks conserva `model` en TSV; runs aplica el override solo a esa ejecución,
+  conservando sesión, permisos y modelos globales. Reintentos conservan selección.
+- tests/test_models.py: roundtrip, cola con modelos diferentes, ejecución aislada,
+  ajustes intactos, formato histórico, general sin override y validación HTTP.
+  **160 pruebas Python y 11 frontend aprobadas**, build Vite correcto.
+- verify_chats_browser.cjs amplía comprobaciones por chat/proveedor, modelo en
+  POST y ausencia en agente general; API simulada, sin lanzar tareas reales.
+- CHATS_BROWSER_OK en URL pública a 360/390/768/1440, sin errores JS; selección
+  aislada entre chat/proveedor, modelo enviado y sin selector en agente general.
+  Evidencias en `artifacts/models-live-20261017/`.
+- Desplegado con `docker compose up -d --build --wait --wait-timeout 90`.
+  dashboard y speech healthy; curl /health y proyecto 200, API anónima 401.
+  Preview local retirado. No se consumió cuota de modelos en la validación.
 
 ### Refinado de esfera y conversación
 

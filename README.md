@@ -111,6 +111,16 @@ Puedes instalar la PWA desde **Ajustes** o el menú del navegador. En iPhone,
 usa Safari → Compartir → Añadir a pantalla de inicio. La interfaz y los paneles
 ya visitados pueden abrirse sin conexión; ejecutar acciones requiere conexión.
 
+## Modelo por chat de proyecto
+
+En **Proyecto → Agente**, el campo **Modelo de Claude/Codex** permite elegir una
+sugerencia o escribir el identificador del modelo. Claude muestra sus alias;
+se añaden el modelo configurado y los usados en ese chat. La disponibilidad real
+depende de la cuenta del proveedor. **Predeterminado** vuelve al modelo de Ajustes.
+Se recuerda por navegador, chat y proveedor. Cada mensaje guarda su selección en
+la cola; cambiarla afecta a los próximos envíos, sin reiniciar el contexto ni
+interrumpir ejecuciones. El agente general no muestra este selector.
+
 ## Agente general (esfera central)
 
 La esfera del centro de la barra abre **Agente** (`/agent`): un agente que conoce
@@ -325,7 +335,7 @@ desde proyectos tienen una política de contenido que bloquea scripts.
 
 `/home/dv1/.config/codex-automation/`, montado como `/config`, conserva:
 
-- `tasks.tsv`: cola compatible con las herramientas anteriores; 14 columnas con escapes (la última es `chat_id`; filas anteriores pertenecen a `main`).
+- `tasks.tsv`: cola compatible con las herramientas anteriores; 15 columnas con escapes: `chat_id` en la 14 y `model` en la 15; filas antiguas usan `main` y modelo predeterminado.
 - `chats.json`: nombres e identificadores de los chats de cada proyecto.
 - `chats-archive.json`: chats eliminados y vaciados del principal (fecha, contextos
   anteriores y mensajes cancelados). Sus ejecuciones siguen en `runs/`.

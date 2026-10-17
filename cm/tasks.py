@@ -8,7 +8,7 @@ import os, tempfile, threading, time
 from . import config
 
 LOCK = threading.RLock()
-FIELDS = ('id', 'status', 'provider', 'project', 'priority', 'date', 'title', 'details', 'started_at', 'finished_at', 'result', 'run_id', 'origin', 'chat_id')
+FIELDS = ('id', 'status', 'provider', 'project', 'priority', 'date', 'title', 'details', 'started_at', 'finished_at', 'result', 'run_id', 'origin', 'chat_id', 'model')
 LEGACY_STATUS = {'pendiente': 'espera', 'enviada': 'working', 'en_progreso': 'working', 'completada': 'terminado'}
 PRIORITY_ORDER = {'alta': 0, 'media': 1, 'baja': 2}
 STATUSES = ('espera', 'working', 'terminado', 'error')
@@ -69,11 +69,11 @@ def save_tasks(records):
         if os.path.exists(tmp): os.unlink(tmp)
 
 
-def new_task(project, provider, title, details='', priority='media', origin='task', chat_id='main'):
+def new_task(project, provider, title, details='', priority='media', origin='task', chat_id='main', model=''):
     title = ' '.join(str(title or '').split())[:200]
     return {'id': str(time.time_ns()), 'status': 'espera', 'provider': provider, 'project': project, 'priority': priority if priority in PRIORITY_ORDER else 'media',
             'date': time.strftime('%Y-%m-%d'), 'title': title, 'details': str(details or '').strip(), 'started_at': '', 'finished_at': '', 'result': '',
-            'run_id': '', 'origin': origin, 'chat_id': chat_id}
+            'run_id': '', 'origin': origin, 'chat_id': chat_id, 'model': model}
 
 
 def task_prompt(task):

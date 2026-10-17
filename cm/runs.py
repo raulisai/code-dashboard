@@ -261,9 +261,9 @@ def start_run(task):
     if handed: meta['handoff'] = handed
     if provider == 'claude':
         if not stored: meta['session_id'] = str(uuid.uuid4())
-        meta.update({'model': settings['claude_model'], 'permission': settings['claude_permission'], 'system_prompt': general_prompt() if general else system_prompt(project)})
+        meta.update({'model': (task.get('model') if not general else '') or settings['claude_model'], 'permission': settings['claude_permission'], 'system_prompt': general_prompt() if general else system_prompt(project)})
     else:
-        meta.update({'model': settings['codex_model'], 'sandbox': settings['codex_sandbox']})
+        meta.update({'model': (task.get('model') if not general else '') or settings['codex_model'], 'sandbox': settings['codex_sandbox']})
         if not stored:
             # Codex no tiene --append-system-prompt: el contexto va al inicio del primer mensaje.
             prompt = f'[Contexto de Codex Manager] {general_prompt() if general else system_prompt(project)}\n\n{prompt}'

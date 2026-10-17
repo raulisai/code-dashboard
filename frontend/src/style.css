@@ -713,3 +713,9 @@ i.plus { color: var(--ok); font-style: normal; } i.minus { color: #ff9d96; font-
 .toggle.disabled { opacity: .62; cursor: default; }
 .toggle-note { display: block; font-size: .78rem; margin-top: 2px; line-height: 1.35; }
 .toggle-note a { color: var(--accent-hover); }
+
+.project-model-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: .78rem; }
+.project-model-bar label { color: var(--dim); }
+.project-model-bar .input { flex: 1; min-width: 100px; max-width: 250px; padding: 6px 9px; font-size: 16px; }
+.project-model-bar small { color: var(--dim); }
+@media (max-width: 480px) { .project-model-bar small { width: 100%; } }
