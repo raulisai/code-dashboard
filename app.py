@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from aiohttp import web, WSMsgType
 
-from cm import auth, chats, config, dockerapi, files, gitops, lifecycle, projects, push, quota, repos, runs, speech, tasks, tmux, websecurity, terminal as terminalio
+from cm import auth, chats, config, dockerapi, files, gitops, lifecycle, media, projects, push, quota, repos, runs, speech, tasks, tmux, websecurity, terminal as terminalio
 
 EXECUTOR = ThreadPoolExecutor(max_workers=16, thread_name_prefix='cm-io')
 PUBLIC_API = {'/api/login', '/api/login/mfa', '/api/logout'}
@@ -514,6 +514,15 @@ async def files_raw(request):
                                            'Cache-Control': 'no-store'})
 
 
+async def media_get(request):
+    # Imágenes que el agente general guarda para la interfaz viva; sandbox igual que /api/files/raw.
+    found = await blocking(media.read, request.match_info.get('name', ''))
+    if not found: return fail('Imagen no encontrada', 404)
+    content_type, data = found
+    return web.Response(body=data, headers={'Content-Type': content_type, 'Cache-Control': 'private, max-age=300',
+                                            'Content-Security-Policy': "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'"})
+
+
 async def files_write(request):
     data = await body(request)
     project = project_param(data.get('project'))
@@ -739,6 +748,7 @@ def make_app():
         web.post('/api/projects/repo-check', repo_check), web.get('/api/quota', quota_get), web.get('/api/github', github_get), web.post('/api/github', github_post),
         web.post('/api/docker', docker_post), web.get('/api/logs', logs_get),
         web.get('/api/jobs', jobs_get), web.get(r'/api/jobs/{job_id}', job_get), web.post('/api/jobs', jobs_post),
+        web.get(r'/api/media/{name}', media_get),
         web.get('/api/files/list', files_list), web.get('/api/files/read', files_read), web.get('/api/files/raw', files_raw),
         web.post('/api/files/write', files_write), web.post('/api/files/op', files_op), web.post('/api/files/upload', files_upload),
         web.get('/api/git', git_get), web.get('/api/git/diff', git_diff), web.post('/api/git', git_post),
@@ -753,6 +763,7 @@ def main():
     projects.cpu_snapshot()
     config.RUNS.mkdir(parents=True, exist_ok=True)
     config.JOBS.mkdir(parents=True, exist_ok=True)
+    media.prepare()
     threading.Thread(target=runs.scheduler_loop, name='agent-scheduler', daemon=True).start()
     threading.Thread(target=push.worker, name='push-notifications', daemon=True).start()
     runs.WAKE.set()

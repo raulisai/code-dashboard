@@ -1,7 +1,8 @@
 import json
 import unittest
 from unittest.mock import patch
-from cm import config, push, runs, tasks, tmux
+import os, time
+from cm import config, media, push, runs, tasks, tmux
 from test_core import IsolatedConfig
 from http_support import start_client, login_client
 
@@ -26,6 +27,9 @@ class GeneralAgentTests(IsolatedConfig, unittest.TestCase):
         self.assertIn('- beta:', meta['system_prompt'])
         self.assertIn('Nuevo proyecto', meta['system_prompt'])
         self.assertIn('el texto solo se muestra si el usuario lo pide', meta['system_prompt'])
+        # Interfaz viva: tipos animados, tarjetas que se actualizan por id y carpeta de imágenes en la raíz de proyectos.
+        for text in ('Interfaz viva', '"type":"stats"', 'vuelve a emitir el mismo id', '/.cm-media/'):
+            self.assertIn(text, meta['system_prompt'])
 
     def test_codex_gets_catalog_on_first_and_resumed_messages(self):
         _, first = self.start('codex')
@@ -80,6 +84,39 @@ class GeneralAgentHttpTests(IsolatedConfig, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(tasks.task_records()), 1)
         response = await self.client.post('/api/agent/reset', json={'project': config.GENERAL, 'chat_id': 'main', 'provider': 'claude'})
         self.assertEqual(response.status, 400, json.dumps(await response.json()))
+
+    async def test_media_serves_only_plain_images_from_its_folder(self):
+        media.prepare()
+        folder = media.folder()
+        self.assertEqual(folder.stat().st_mode & 0o777, 0o700)
+        (folder / 'captura.png').write_bytes(b'\x89PNG\r\n\x1a\nimagen')
+        (folder / 'plano.SVG').write_text('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')
+        (folder / 'nota.txt').write_text('texto')
+        (config.PROJECTS / 'alpha' / 'secreto.png').write_bytes(b'privado')
+        os.symlink(config.PROJECTS / 'alpha' / 'secreto.png', folder / 'enlace.png')
+        self.assertEqual((await self.client.get('/api/media/captura.png')).status, 401)
+        await login_client(self)
+        response = await self.client.get('/api/media/captura.png')
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.headers['Content-Type'], 'image/png')
+        self.assertTrue(response.headers['Content-Security-Policy'].startswith('sandbox;'))
+        self.assertEqual(response.headers['X-Content-Type-Options'], 'nosniff')
+        self.assertEqual(await response.read(), b'\x89PNG\r\n\x1a\nimagen')
+        svg = await self.client.get('/api/media/plano.SVG')
+        self.assertEqual((svg.status, svg.headers['Content-Type']), (200, 'image/svg+xml'))
+        self.assertIn('sandbox', svg.headers['Content-Security-Policy'])
+        for name in ('nota.txt', 'enlace.png', '.oculta.png', 'falta.png', '..%2Falpha%2Fsecreto.png', 'a%00.png'):
+            self.assertEqual((await self.client.get(f'/api/media/{name}')).status, 404, name)
+
+    async def test_media_prune_keeps_recent_images(self):
+        media.prepare()
+        old, recent = media.folder() / 'vieja.png', media.folder() / 'nueva.png'
+        old.write_bytes(b'x'); recent.write_bytes(b'y')
+        past = time.time() - 40 * 86400
+        os.utime(old, (past, past))
+        media.prepare()
+        self.assertFalse(old.exists())
+        self.assertTrue(recent.exists())
 
 
 if __name__ == '__main__':

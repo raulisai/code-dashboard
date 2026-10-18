@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {GENERAL, activityRows, classify, detectProject, duration, headline, presence, projectLabel, speakable, taskHref} from '../src/general.js';
+import {GENERAL, activityRows, classify, detectProject, duration, headline, planOf, presence, projectLabel, speakable, taskHref} from '../src/general.js';
 
 const bash = (command, extra = {}) => ({t: 'tool', name: 'Bash', input: {command}, status: 'done', ...extra});
 
@@ -83,4 +83,32 @@ test('la presencia distingue actividad real, voz, cola y reposo sin datos perman
   assert.deepEqual(presence({ready: true, run: {status: 'done'}}), {kind: 'done', title: 'Respuesta lista'});
   assert.equal(presence({ready: true, speaking: true}).kind, 'speaking');
   assert.ok(speakable('Frase corta. '.repeat(100)).length <= 420);
+});
+
+test('acciones con su propia animación: código, terminal, base de datos, lectura y búsqueda', () => {
+  const edit = path => classify({t: 'tool', name: 'Write', input: {file_path: path}});
+  assert.deepEqual([edit('/srv/projects/a/src/app.jsx').title, edit('/srv/projects/a/README.md').title], ['Escribiendo código', 'Editando archivos']);
+  assert.equal(classify({t: 'tool', name: 'FileChange', input: {changes: [{path: 'notas.txt'}, {path: 'main.py'}]}}).title, 'Escribiendo código');
+  for (const command of ['docker compose exec db psql -c "select 1"', 'sqlite3 data.db ".tables"', 'redis-cli ping', 'echo "SELECT id FROM users" | mysql app'])
+    assert.equal(classify(bash(command)).kind, 'database', command);
+  assert.equal(classify(bash('apt-get update && apt-get install -y jq')).kind, 'package');
+  assert.equal(classify(bash('ls -la')).kind, 'terminal');
+  assert.deepEqual([classify({t: 'tool', name: 'Read', input: {file_path: '/srv/projects/a/x.py'}}).kind, classify({t: 'tool', name: 'Grep', input: {pattern: 'main'}}).kind], ['read', 'search']);
+});
+
+test('la presencia anticipa lo que va a mostrar y distingue responder de pensar', () => {
+  const running = events => presence({run: {status: 'running', events}});
+  assert.deepEqual(running([{t: 'thinking', text: '…'}]), {kind: 'thinking', title: 'Pensando'});
+  assert.deepEqual(running([{t: 'text', text: 'Listo, ya revisé'}]), {kind: 'respond', title: 'Respondiendo'});
+  assert.deepEqual(running([{t: 'text', text: 'Mira:\n```cm-ui\n{"type":"table","columns":['}]), {kind: 'table', title: 'Armando una tabla'});
+  assert.equal(running([{t: 'text', text: '```cm-ui\n{"type":"image"'}]).kind, 'image');
+  assert.equal(running([{t: 'text', text: '```cm-ui\n{"type":"chart","values":[1]}\n```'}]).kind, 'respond');
+});
+
+test('el plan del agente sale de TodoWrite o de la lista de Codex', () => {
+  const todos = [{content: 'Compilar', status: 'completed'}, {content: 'Desplegar', activeForm: 'Desplegando', status: 'in_progress'}, {content: 'Verificar', status: 'pending'}];
+  assert.deepEqual(planOf([{t: 'tool', name: 'TodoWrite', input: {todos: [{content: 'Viejo', status: 'pending'}]}}, {t: 'tool', name: 'TodoWrite', input: {todos}}]),
+    [{text: 'Compilar', status: 'done'}, {text: 'Desplegando', status: 'running'}, {text: 'Verificar', status: 'pending'}]);
+  assert.deepEqual(planOf([{t: 'todo', items: [{content: 'Uno', status: 'completed'}, {content: 'Dos', status: 'pending'}]}]).map(step => step.status), ['done', 'pending']);
+  assert.deepEqual(planOf([bash('ls')]), []);
 });

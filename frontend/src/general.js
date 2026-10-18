@@ -1,17 +1,22 @@
 // Lógica del agente general (esfera central): de los eventos de una ejecución a titulares,
 // filas de «Actividad en tiempo real» y texto para leer en voz alta. Sin React para poder probarla.
+import {draftingType} from './presentations.js';
+
 export const GENERAL = '_general';
 export const generalHref = (chatId = 'main') => `/agent?chat=${encodeURIComponent(chatId)}`;
 export const taskHref = task => task.project === GENERAL ? generalHref(task.chat_id || 'main') : `/p/${task.project}?chat=${encodeURIComponent(task.chat_id || 'main')}`;
 export const projectLabel = name => name === GENERAL ? 'Agente general' : name;
 
-const EXPLORE = new Set(['Read', 'Glob', 'Grep', 'LS', 'NotebookRead', 'ToolSearch']);
+const READ = new Set(['Read', 'NotebookRead']), SEARCH = new Set(['Glob', 'Grep', 'LS', 'ToolSearch']), EXPLORE_KINDS = new Set(['read', 'search']);
+// Archivos de código: escribirlos se muestra como «Escribiendo código»; el resto, «Editando archivos».
+const CODE_FILE = /\.(?:[cm]?[jt]sx?|py|go|rs|java|kts?|rb|php|c|h|cc|cpp|hpp|cs|swift|s?css|sass|less|html?|vue|svelte|astro|sh|bash|zsh|sql|ya?ml|toml|json|lua|dart|ex|exs|erl|scala|r|pl|dockerfile)$|(?:^|\/)(?:Dockerfile|Makefile|compose\.ya?ml)$/i;
 const EDIT = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'FileChange']);
 const BASH_RULES = [
   [/\bgit\s+push\b/, 'git', 'Subiendo cambios'],
   [/\bgit\s+(commit|add)\b/, 'git', 'Guardando una versión'],
   [/\bgit\b/, 'git', 'Revisando Git'],
   [/\b(npm\s+(run\s+)?test|pytest|unittest|node\s+--test|playwright|vitest|jest|verify_[a-z_]+)\b/, 'test', 'Ejecutando pruebas'],
+  [/\b(psql|mysql|mariadb|sqlite3|mongosh|mongo|redis-cli|clickhouse-client|pg_dump|pg_restore|mysqldump|alembic)\b|\bprisma\s+(db|migrate)\b|\b(SELECT\b[\s\S]*\bFROM|INSERT\s+INTO|UPDATE\b[\s\S]*\bSET|DELETE\s+FROM)\b/, 'database', 'Consultando la base de datos'],
   [/\bdocker\s+(compose\s+)?(up|build|restart|pull)\b/, 'docker', 'Desplegando'],
   [/\bdocker\b/, 'docker', 'Revisando contenedores'],
   [/\b(npm|pnpm|yarn|pip|apt(-get)?)\s+(install|ci|add|upgrade)\b/, 'package', 'Instalando dependencias'],
@@ -35,10 +40,11 @@ export function classify(event) {
     return {kind: rule ? rule[1] : 'terminal', title: rule ? rule[2] : 'Ejecutando comandos', command: clip(withoutCd(firstLine(command)), 70), note: input.description || ''};
   }
   if (EDIT.has(event.name)) {
-    const paths = event.name === 'FileChange' ? (input.changes || []).map(change => change.path) : [input.file_path || input.notebook_path];
-    return {kind: 'edit', title: 'Editando archivos', command: clip(paths.filter(Boolean).map(shortPath).join(', ') || 'archivos', 70), note: ''};
+    const paths = (event.name === 'FileChange' ? (input.changes || []).map(change => change.path) : [input.file_path || input.notebook_path]).filter(Boolean);
+    return {kind: 'edit', title: paths.some(path => CODE_FILE.test(path)) ? 'Escribiendo código' : 'Editando archivos', command: clip(paths.map(shortPath).join(', ') || 'archivos', 70), note: ''};
   }
-  if (EXPLORE.has(event.name)) return {kind: 'read', title: 'Revisando el código', command: clip(shortPath(input.file_path || input.path || input.pattern || ''), 70), note: ''};
+  if (READ.has(event.name)) return {kind: 'read', title: 'Leyendo archivos', command: clip(shortPath(input.file_path || input.notebook_path || ''), 70), note: ''};
+  if (SEARCH.has(event.name)) return {kind: 'search', title: 'Buscando en el código', command: clip(shortPath(input.pattern || input.path || input.query || ''), 70), note: ''};
   if (event.name === 'WebFetch' || event.name === 'WebSearch') return {kind: 'web', title: 'Buscando en la web', command: clip(input.url || input.query || '', 70), note: ''};
   if (event.name === 'Task' || event.name === 'Agent') return {kind: 'agent', title: 'Delegando una tarea', command: clip(input.description || 'Subagente', 70), note: ''};
   return {kind: 'terminal', title: 'Usando herramientas', command: clip(String(event.name || '').replace(/^mcp(__|:)/, '').replace(/__|\//g, ' · '), 70), note: ''};
@@ -50,8 +56,8 @@ export function activityRows(events, limit = 4) {
   (events || []).forEach((event, index) => {
     if (event.t !== 'tool' || event.name === 'TodoWrite') return;
     const info = classify(event), last = rows.at(-1);
-    if (info.kind === 'read' && last?.kind === 'read' && !event.sub) {
-      last.count += 1; last.command = `${last.count} archivos · ${info.command}`; last.status = event.status; last.t1 = event.t1 ?? last.t1; last.last = index;
+    if (EXPLORE_KINDS.has(info.kind) && EXPLORE_KINDS.has(last?.kind) && !event.sub) {
+      last.count += 1; last.kind = info.kind; last.title = info.title; last.command = `${last.count} archivos · ${info.command}`; last.status = event.status; last.t1 = event.t1 ?? last.t1; last.last = index;
       return;
     }
     const detail = event.status === 'running' ? (info.note || 'En curso…')
@@ -104,6 +110,24 @@ export function headline(run, queued = 0) {
   return null;
 }
 
+const DRAFTS = {chart: ['chart', 'Preparando una gráfica'], stats: ['chart', 'Calculando datos'], progress: ['chart', 'Actualizando el progreso'],
+  table: ['table', 'Armando una tabla'], image: ['image', 'Preparando una imagen'], file: ['image', 'Preparando un archivo'],
+  html: ['image', 'Diseñando una vista'], code: ['edit', 'Escribiendo código'], visual: ['visual', 'Preparando una vista']};
+
+/** Plan del agente (TodoWrite de Claude o lista de Codex): pasos con estado done/running/pending. */
+export function planOf(events) {
+  for (let index = (events || []).length - 1; index >= 0; index--) {
+    const event = events[index];
+    const items = event.t === 'tool' && event.name === 'TodoWrite' ? event.input?.todos : event.t === 'todo' ? event.items : null;
+    if (!Array.isArray(items)) continue;
+    return items.filter(item => item && typeof item === 'object').slice(0, 30).map(item => {
+      const status = item.status === 'completed' ? 'done' : item.status === 'in_progress' ? 'running' : 'pending';
+      return {text: clip(status === 'running' && item.activeForm ? item.activeForm : item.content, 90), status};
+    });
+  }
+  return [];
+}
+
 /** Estado compacto de la esfera: solo actividad real, sin resumir proyectos ni comandos. */
 export function presence({run, queued = 0, phase = 'idle', speaking = false, sending = false, connected = true, error = '', ready = false} = {}) {
   if (error) return {kind: 'error', title: 'Necesito tu atención', subtitle: error};
@@ -117,7 +141,11 @@ export function presence({run, queued = 0, phase = 'idle', speaking = false, sen
     if ((run.approvals || []).length) return {kind: 'approval', title: 'Esperando tu permiso'};
     const tool = [...(run.events || [])].reverse().find(event => event.t === 'tool' && event.name !== 'TodoWrite' && event.status === 'running');
     if (tool) { const info = classify(tool); return {kind: info.kind, title: info.title}; }
-    return {kind: 'thinking', title: run.events?.at(-1)?.t === 'text' ? 'Respondiendo' : 'Pensando'};
+    const last = run.events?.at(-1);
+    if (last?.t !== 'text') return {kind: 'thinking', title: 'Pensando'};
+    // Escribiendo un bloque cm-ui: la esfera anticipa qué va a mostrar.
+    const draft = DRAFTS[draftingType(last.text)];
+    return draft ? {kind: draft[0], title: draft[1]} : {kind: 'respond', title: 'Respondiendo'};
   }
   if (run?.status === 'stopping') return {kind: 'stopping', title: 'Deteniendo'};
   if (queued) return {kind: 'queue', title: 'En cola'};

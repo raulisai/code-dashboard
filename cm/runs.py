@@ -16,7 +16,7 @@ import hashlib, json, re, secrets, threading, time, uuid
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
-from . import config, tasks, tmux
+from . import config, media, tasks, tmux
 from .util import clip, now_text, read_json, tail_text, write_json
 
 WAKE = threading.Event()
@@ -216,19 +216,35 @@ def project_catalog():
     return [(path.name, projects.readme_summary(path)) for path in projects.projects()][:120]
 
 
+def _example(spec):
+    return json.dumps(spec, ensure_ascii=False, separators=(',', ':'))
+
+
 GENERAL_PRESENTATION_GUIDE = (
     'Respuestas: se escuchan en voz alta y el texto solo se muestra si el usuario lo pide. Responde con lo esencial en una a tres '
     'frases cortas (unas 40 palabras como máximo): el resultado, no el proceso; sin listas, tablas, encabezados, rutas largas ni '
     'hashes salvo que pida detalle, y entonces extiéndete lo necesario. '
     'Conversación: para saludos y charla responde de forma natural y breve sin ejecutar herramientas ni revisar el servidor. '
     'Para acciones trabaja con autonomía y di qué proyecto estás atendiendo. No inventes saldos ni disponibilidad: el panel cambia de conexión si falla. '
-    'Puedes mostrar planos, gráficos, tablas, archivos e interfaces con bloques ```cm-ui seguidos de JSON válido y cierre ```. '
-    'Ejemplos: ' + json.dumps({'type':'chart','title':'Gráfico','labels':['A','B'],'values':[3,7]}) + '; '
-    + json.dumps({'type':'table','title':'Datos','columns':['Nombre','Valor'],'rows':[['A',3]]}) + '; '
-    + json.dumps({'type':'html','title':'Plano','html':'<svg viewBox="0 0 400 300"><rect x="10" y="10" width="300" height="200" fill="lightblue"/></svg>'}) + '; '
-    + json.dumps({'type':'file','title':'Archivo','project':'nombre-proyecto','path':'public/plano.svg'}) + '. '
-    'HTML aislado, sin scripts, red ni acceso al panel; usa HTML/CSS/SVG autocontenidos. No incluyas secretos. '
-    'Pon una explicación breve fuera del bloque. Usa presentaciones solo cuando las pida o sean imprescindibles.'
+    'Interfaz viva: lo visual sí aparece solo en pantalla, animado, mientras trabajas y al terminar. Cuando pida ver, comparar o vigilar '
+    'datos, una imagen o algo visual, muéstralo con bloques ```cm-ui (JSON válido y cierre ```) en vez de describirlo. '
+    'Tipos: chart (labels, values; variant bar|line|area|donut; unit), table (columns, rows), stats (items: label, value, unit, delta, trend), '
+    'progress (value 0-100 y/o steps: label, status done|running|pending|error), image (media o project+path, caption; varias en images), '
+    'code (language, code), html (HTML/CSS/SVG estático) y file (project, path). '
+    'En vivo: pon "id" y vuelve a emitir el mismo id para actualizar esa tarjeta mientras avanzas (progreso, métricas, tablas que crecen); '
+    'el panel la anima sola. '
+    f'Imágenes: guárdalas (png, jpg, webp, gif o svg) en {config.host_path(media.folder())}/ y usa "media" con el nombre del archivo; '
+    'si vienen de internet, descárgalas ahí primero. '
+    'Ejemplos: ' + '; '.join(_example(spec) for spec in (
+        {'type': 'chart', 'id': 'cpu', 'title': 'CPU por contenedor', 'labels': ['web', 'db'], 'values': [32, 8], 'unit': '%'},
+        {'type': 'stats', 'id': 'resumen', 'items': [{'label': 'En línea', 'value': 5}, {'label': 'Disco', 'value': 71, 'unit': '%', 'trend': [60, 66, 71]}]},
+        {'type': 'table', 'title': 'Proyectos', 'columns': ['Nombre', 'Estado'], 'rows': [['alpha', 'activo']]},
+        {'type': 'progress', 'id': 'deploy', 'steps': [{'label': 'Compilar', 'status': 'done'}, {'label': 'Desplegar', 'status': 'running'}]},
+        {'type': 'image', 'media': 'captura.png', 'caption': 'Así se ve'},
+        {'type': 'html', 'title': 'Plano', 'html': '<svg viewBox="0 0 400 300"><rect x="10" y="10" width="300" height="200" fill="lightblue"/></svg>'},
+        {'type': 'file', 'project': 'nombre-proyecto', 'path': 'public/plano.svg'})) + '. '
+    'HTML aislado, sin scripts, red ni acceso al panel. No incluyas secretos. Pon una frase breve fuera del bloque. '
+    'Usa presentaciones cuando las pida o ayuden de verdad a verlo; en la charla, nunca.'
 )
 
 

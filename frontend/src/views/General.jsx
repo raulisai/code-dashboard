@@ -1,21 +1,24 @@
 import React, {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {createPortal} from 'react-dom';
-import {Activity, ArrowUp, AudioLines, Bot, Box, Brain, Check, CircleAlert, CircleCheck, Clock3, FilePen, FlaskConical, FolderOpen, GitBranch, Globe2, Hammer, Keyboard, MessageSquareText, MessagesSquare, Mic, MoreHorizontal, Package,
-  Plus, RotateCcw, Search, Server as ServerIcon, ShieldCheck, Sparkles, Square, SquareTerminal, Volume2, VolumeX, X} from 'lucide-react';
+import {Activity, ArrowUp, AudioLines, BarChart3, Bot, Box, Brain, Check, CircleAlert, CircleCheck, Clock3, Database, FilePen, FileText, FlaskConical, FolderOpen, GitBranch, Globe2, Hammer,
+  Image as ImageIcon, Keyboard, LayoutDashboard, MessageSquareText, MessagesSquare, Mic, MoreHorizontal, Package, Plus, RotateCcw, Search, Server as ServerIcon, ShieldCheck, Sparkles, Square,
+  SquareTerminal, Table2, Volume2, VolumeX, X} from 'lucide-react';
 import {useApp} from '../App.jsx';
 import {api, navigate, post, useNow, usePolling} from '../lib.js';
 import {Spinner, toast} from '../ui.jsx';
 import {Approval} from '../workspace/Agent.jsx';
-import {shapeOf} from '../particles.js';
-import {GENERAL, activityRows, detectProject, duration, presence, speakable} from '../general.js';
+import {shapeOf, tintOf} from '../particles.js';
+import {GENERAL, activityRows, detectProject, duration, planOf, presence, speakable} from '../general.js';
+import {liveSpecs, presentationParts} from '../presentations.js';
 import {voiceSettings} from '../voice.js';
-import Presentations from '../Presentations.jsx';
+import Presentations, {LiveStage} from '../Presentations.jsx';
 import Orb from '../Orb.jsx';
 import useOrbVoice from '../useOrbVoice.js';
 import '../general.css';
 
-const KIND_ICONS = {git: GitBranch, docker: Box, test: FlaskConical, web: Globe2, server: ServerIcon, package: Package, build: Hammer, edit: FilePen, read: Search, agent: Bot, terminal: SquareTerminal};
-const STATE_ICONS = {...KIND_ICONS, idle: Sparkles, thinking: Brain, listening: Mic, speaking: AudioLines, transcribing: AudioLines, queue: Clock3, error: CircleAlert, approval: ShieldCheck, done: CircleCheck, stopping: Square};
+const KIND_ICONS = {git: GitBranch, docker: Box, test: FlaskConical, web: Globe2, server: ServerIcon, package: Package, build: Hammer, edit: FilePen, read: FileText, search: Search, agent: Bot,
+  terminal: SquareTerminal, database: Database, chart: BarChart3, table: Table2, image: ImageIcon, visual: LayoutDashboard};
+const STATE_ICONS = {...KIND_ICONS, idle: Sparkles, thinking: Brain, respond: MessageSquareText, listening: Mic, speaking: AudioLines, transcribing: AudioLines, queue: Clock3, error: CircleAlert, approval: ShieldCheck, done: CircleCheck, stopping: Square};
 const SPEAK_KEY = 'cm-general-speak', VOICE_TASKS = 'cm-general-voice-tasks';
 const AUTO_SEND_SECONDS = .15;
 
@@ -32,6 +35,8 @@ export default function General() {
   const [menu, setMenu] = useState(false), [controls, setControls] = useState(false), [sheet, setSheet] = useState(false), [details, setDetails] = useState(false), [responseOpen, setResponseOpen] = useState(false), [arrival, setArrival] = useState('');
   const requestedTask = useRef(null), menuRef = useRef(null), dockRef = useRef(null), toggleRef = useRef(null), inputRef = useRef(null), sheetInputRef = useRef(null);
   const [slot, setSlot] = useState(null);
+  // Vista en vivo: la de la petición hecha en esta visita (o la que está en marcha); se puede ocultar por ejecución.
+  const [stageTask, setStageTask] = useState(null), [hiddenStage, setHiddenStage] = useState(''), [pulse, setPulse] = useState(null), finished = useRef({});
   // Respuesta a lo pedido en esta visita: se escucha y su texto solo se abre si se pide ({id, heard}).
   const [fresh, setFresh] = useState(null);
   const [viewport, setViewport] = useState(() => ({height: window.visualViewport?.height || window.innerHeight, keyboard: false}));
@@ -124,10 +129,37 @@ export default function General() {
   const status = presence({run: latest, queued: data?.queue.length || 0, phase: voice.phase, speaking, sending: sending || !!pending,
     connected: !!data, error: error || voice.error, ready: !!fresh && !fresh.heard && !showResponse});
   const StatusIcon = STATE_ICONS[status.kind] || Sparkles;
-  const typingLine = running ? ([...events].reverse().find(event => event.t === 'text' && !event.sub)?.text || '').split('\n').filter(Boolean).at(-1) : '';
+  // Última frase del agente, sin los bloques cm-ui (esos se ven en la vista en vivo).
+  const typingLine = running ? presentationParts([...events].reverse().find(event => event.t === 'text' && !event.sub)?.text || '').filter(part => !part.spec)
+    .map(part => part.text).join('\n').split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('```')).at(-1) || '' : '';
   // Arriba, en texto translúcido: los últimos comandos tal cual se ejecutan (el más reciente, más visible).
-  const liveRows = running ? rows.slice(-3) : [], live = liveRows.length > 0 || !!typingLine;
+  const liveRows = running ? rows.slice(-3) : [];
+  const plan = useMemo(() => running ? planOf(events) : [], [running, events]);
+  const planDone = plan.filter(step => step.status === 'done').length, planStep = plan.find(step => step.status === 'running') || plan.find(step => step.status === 'pending');
+  const live = liveRows.length > 0 || !!typingLine || plan.length > 1;
   const current = liveRows.findLast(row => row.status === 'running') || liveRows.at(-1);
+  const orbShape = shapeOf(status.kind), tint = tintOf(orbShape);
+  // Lo que el agente muestra (tablas, gráficas, datos, imágenes) aparece en vivo y se queda al terminar.
+  const stageRun = latest && (running || latest.task_id === stageTask) ? latest : null;
+  const stageTexts = useMemo(() => {
+    if (!stageRun) return [];
+    const texts = (stageRun.events || []).filter(event => event.t === 'text' && !event.sub).map(event => event.text);
+    return stageRun.result?.text ? [...texts, stageRun.result.text] : texts;
+  }, [stageRun]);
+  const {cards, drafting} = useMemo(() => liveSpecs(stageTexts), [stageTexts]);
+  const stageDraft = running ? drafting : '';
+  const showStage = !!stageRun && (cards.length > 0 || !!stageDraft) && hiddenStage !== stageRun.id && !showResponse;
+
+  // Una onda recorre la esfera cada vez que termina un paso (coral si falló) y al completar la petición.
+  useEffect(() => {
+    if (!latest) return;
+    const tools = (latest.events || []).filter(event => event.t === 'tool' && event.name !== 'TodoWrite' && event.status !== 'running');
+    const seen = finished.current[latest.id];
+    finished.current[latest.id] = {count: tools.length, status: latest.status};
+    if (!seen) return;
+    if (latest.status === 'done' && seen.status !== 'done') setPulse({id: `${latest.id}:done`, tone: 'done'});
+    else if (tools.length > seen.count) setPulse({id: `${latest.id}:${tools.length}`, tone: tools.at(-1).status === 'error' ? 'error' : 'ok'});
+  }, [latest]);
 
   // La esfera de la barra viaja al centro y crece hasta su sitio (la posición sale de App.jsx).
   useLayoutEffect(() => {
@@ -171,7 +203,7 @@ export default function General() {
     inFlight.current = true; setSending(true);
     try {
       const result = await post('/api/agent/send', {project: GENERAL, chat_id: 'main', provider: nextProvider, text: value});
-      requestedTask.current = result.task?.id || null; setResponseOpen(false); setFresh(null);
+      requestedTask.current = result.task?.id || null; setStageTask(result.task?.id || null); setResponseOpen(false); setFresh(null);
       if (viaVoice) waiting.current = result.task?.id || true;
       try { if (viaVoice && result.task?.id) sessionStorage.setItem(VOICE_TASKS, JSON.stringify([...voiceTasks().slice(-20), result.task.id])); } catch { /* el envío ya está confirmado */ }
       rev.current = ''; try { await load(); } catch (err) { setError(err.message); }
@@ -220,7 +252,7 @@ export default function General() {
         </div>}
       </div>;
   const dock = slot ? createPortal(dockElement, document.body) : dockElement;
-  return <div className={`general ${arrival ? `arrive-${arrival}` : ''} ${showResponse ? 'has-response' : ''} ${live ? 'has-live' : ''} ${typing ? 'is-typing' : ''} ${viewport.keyboard ? 'keyboard-open' : ''}`}
+  return <div className={`general ${arrival ? `arrive-${arrival}` : ''} ${showResponse ? 'has-response' : ''} ${live ? 'has-live' : ''} ${showStage ? 'has-stage' : ''} ${typing ? 'is-typing' : ''} ${viewport.keyboard ? 'keyboard-open' : ''}`}
     style={{'--view-height': `${viewport.height}px`}}>
     <header className="general-top">
       <h1 className="general-identity"><span className="dot live"/>Agente general</h1>
@@ -242,7 +274,11 @@ export default function General() {
     {(latest?.approvals || []).map(approval => <div className="general-approval" key={approval.id}><Approval approval={approval} onAnswer={answer}/></div>)}
 
     {live && <button className="general-live" onClick={() => setDetails(true)} title="Abrir actividad"
-      aria-label={`En ejecución: ${current ? current.command || current.title : typingLine}. Abrir actividad`}>
+      aria-label={`${plan.length > 1 ? `Paso ${Math.min(plan.length, planDone + 1)} de ${plan.length}. ` : ''}En ejecución: ${current ? current.command || current.title : typingLine || planStep?.text || ''}. Abrir actividad`}>
+      {plan.length > 1 && <span className="live-plan">
+        <span className="plan-steps">{plan.map((step, index) => <i key={index} className={step.status}/>)}</span>
+        <span className="plan-count">{planDone}/{plan.length}</span><span className="plan-text">{planStep?.text || 'Plan completado'}</span>
+      </span>}
       {liveRows.map((row, index) => { const Icon = KIND_ICONS[row.kind] || SquareTerminal; return <span className={`live-line ${row.status}`} data-age={liveRows.length - 1 - index} data-kind={row.kind} key={`${latest.id}:${row.first}`}>
         <span className="live-state">{row.status === 'running' ? <span className="ring"/> : row.status === 'error' ? <X size={11}/> : <Check size={11}/>}</span>
         <Icon size={15} strokeWidth={1.7} className="live-icon"/>
@@ -252,14 +288,15 @@ export default function General() {
       {typingLine && <span className="live-line live-thought"><MessageSquareText size={14} strokeWidth={1.7} className="live-icon"/><span>{typingLine}</span></span>}
     </button>}
 
+    <div className="general-body">
     <div className="general-stage">
-      <div className="general-orbit" data-mode={orbState}>
+      <div className="general-orbit" data-mode={orbState} style={tint ? {'--presence': tint} : undefined}>
         <button ref={orbRef} className={`live-orb ${arrival === 'launch' ? 'launch' : ''}`} data-state={orbState} onClick={tapOrb}
           onAnimationEnd={event => { if (event.target === event.currentTarget) setArrival(''); }}
           aria-label={voice.phase === 'listening' ? 'Terminar de hablar' : 'Hablar con el agente general'}>
-          <Orb state={orbState} level={voice.level} shape={running ? shapeOf(status.kind) : 'sphere'}/>
+          <Orb state={orbState} level={voice.level} shape={orbShape} pulse={pulse}/>
         </button>
-        <span className="orb-state-icon" key={status.kind} aria-hidden="true"><StatusIcon size={21} strokeWidth={1.6}/></span>
+        <span className="orb-state-icon" key={status.kind} data-kind={status.kind} aria-hidden="true"><StatusIcon size={21} strokeWidth={1.6}/></span>
       </div>
       <div className="general-status" data-kind={status.kind} role="status" aria-live="polite" aria-atomic="true">
         <span className="presence-dot" aria-hidden="true"/><span className="general-state-label">{status.title}</span>
@@ -269,6 +306,9 @@ export default function General() {
       {(voice.phase === 'listening' || voice.phase === 'transcribing') && <div className="live-transcript">
         <p>{voice.interim || (voice.phase === 'listening' ? (voice.engine === 'browser' ? 'Transcripción en vivo' : 'Voz local · termina al hacer una pausa') : '')}</p>
       </div>}
+    </div>
+
+    {showStage && <LiveStage cards={cards} drafting={stageDraft} running={running} onClose={() => setHiddenStage(stageRun.id)}/>}
     </div>
 
     {pending && <div className="pending-message"><p>«{pending.text}»</p>

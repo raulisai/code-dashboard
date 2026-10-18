@@ -1,0 +1,129 @@
+/* Interfaz viva: tarjetas que el agente muestra (gráficas, tablas, datos, progreso, imágenes y código) con
+   animaciones discretas. Mismo lenguaje que la esfera: translúcido, azul frío y movimiento suave. */
+.presentation-card { position: relative; isolation: isolate; }
+.presentation-card > header b { font-weight: 600; font-size: .84rem; color: #d3e1f5; letter-spacing: .01em; }
+.presentation-empty { color: #8fa4c4; font-size: .84rem; }
+.card-pulse { position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 1px #a5c6ff70, 0 0 28px #6c9bff30;
+  animation: card-pulse 1.2s ease-out forwards; }
+@keyframes card-pulse { from { opacity: 1; } to { opacity: 0; } }
+
+/* Gráficas */
+.chart-grid { stroke: #8ba5ca14; }
+.chart-axis { fill: #8197b8; font-size: 9.5px; }
+.chart-value { fill: #c9d9f2; font-size: 9.5px; font-variant-numeric: tabular-nums; }
+.chart-label { fill: #9eb1cd; font-size: 10px; }
+.chart-line { filter: drop-shadow(0 0 5px #8fb4ff55); }
+.chart-dot { fill: #c0d3ff; }
+.chart-dot.last { fill: #e2ecff; animation: chart-dot 1.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes chart-dot { 50% { transform: scale(1.6); opacity: .65; } }
+.chart-point:focus-visible { outline: none; }
+.chart-point:focus-visible :is(rect, circle) { stroke: #e2ecff; stroke-width: 1.5; }
+.donut { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.donut svg { width: min(150px, 42vw); flex: 0 0 auto; transform: rotate(-90deg); }
+.donut-track { fill: none; stroke: #8ba5ca17; stroke-width: 14; }
+.donut-arc { fill: none; stroke-width: 14; stroke-linecap: butt; }
+.donut text { transform: rotate(90deg); transform-origin: 70px 70px; }
+.donut-total { fill: #e4eefc; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.donut-unit { fill: #8ea3c2; font-size: 9px; }
+.donut-legend { flex: 1 1 140px; display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: .78rem; color: #b8c9e2; }
+.donut-legend li { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.donut-legend i { width: 8px; height: 8px; border-radius: 50%; }
+.donut-legend span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.donut-legend b { font-weight: 500; color: #dbe7f8; font-variant-numeric: tabular-nums; }
+
+/* Tablas: filas que entran escalonadas y celdas que destellan al cambiar. */
+.presentation-table th { color: #8fa6c8; font-weight: 500; font-size: .74rem; position: sticky; top: 0; background: #0f1a27; }
+.presentation-table :is(td, th).num { text-align: right; font-variant-numeric: tabular-nums; }
+.row-enter { animation: row-in .45s cubic-bezier(.2, .8, .2, 1) backwards; animation-delay: calc(var(--i, 0) * 45ms); }
+@keyframes row-in { from { opacity: 0; transform: translateY(6px); } }
+.cell-changed { animation: cell-flash 1.4s ease-out; }
+@keyframes cell-flash { from { background: #8fb4ff33; color: #ffffff; } }
+
+/* Cifras */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; }
+.stat { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 10px 12px 8px; border-radius: 14px; background: #8fb4ff0a; border: 1px solid #9bb8df14;
+  animation: row-in .5s cubic-bezier(.2, .8, .2, 1) backwards; animation-delay: calc(var(--i, 0) * 70ms); }
+.stat[data-changed] { animation: stat-flash 1.3s ease-out; }
+@keyframes stat-flash { from { border-color: #a5c6ff80; box-shadow: 0 0 22px #6c9bff30; } }
+.stat-label { font-size: .7rem; color: #8ea4c4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat-value { font-size: 1.45rem; font-weight: 600; color: #eaf2ff; font-variant-numeric: tabular-nums; line-height: 1.15; overflow-wrap: anywhere; }
+.stat-value small { margin-left: 3px; font-size: .72rem; font-weight: 500; color: #9fb4d3; }
+.stat-delta { display: inline-flex; align-items: center; gap: 4px; font-size: .7rem; font-variant-numeric: tabular-nums; }
+.stat-delta.up { color: #8ef0b0; }
+.stat-delta.down { color: #ffb4a8; }
+.stat-spark { width: 100%; height: 26px; margin-top: 2px; overflow: visible; }
+.stat-spark path { fill: none; stroke: #8fb4ff; stroke-width: 1.6; vector-effect: non-scaling-stroke; stroke-linejoin: round;
+  stroke-dasharray: 1; stroke-dashoffset: 1; animation: spark-draw 1.2s .2s cubic-bezier(.4, 0, .2, 1) forwards; }
+@keyframes spark-draw { to { stroke-dashoffset: 0; } }
+
+/* Progreso */
+.progress-line { display: flex; align-items: center; gap: 12px; }
+.progress-track { flex: 1; height: 6px; border-radius: 6px; background: #8ba5ca1c; overflow: hidden; }
+.progress-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #6f95e6, #b7cdff); box-shadow: 0 0 12px #8fb4ff66; position: relative; overflow: hidden; }
+.progress-track i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, #ffffff55, transparent); animation: shimmer 1.8s linear infinite; }
+.progress-line b { min-width: 46px; text-align: right; font-weight: 600; color: #e4eefc; font-variant-numeric: tabular-nums; }
+.progress-steps { display: grid; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; font-size: .82rem; color: #c3d3ea; }
+.progress-steps li { display: flex; align-items: center; gap: 10px; animation: row-in .4s backwards; animation-delay: calc(var(--i, 0) * 60ms); }
+.progress-steps li.done { color: #8ea4c4; }
+.progress-steps li.pending { color: #7f93b2; }
+.progress-steps li.error { color: #ffb4a8; }
+.step-mark { flex: 0 0 auto; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; border: 1px solid #8ba5ca40; animation: step-pop .35s cubic-bezier(.2, 1.4, .4, 1); }
+.done > .step-mark { background: #2de79222; border-color: #2de79250; color: #8ef0b0; }
+.error > .step-mark { background: #f8514926; border-color: #f8514960; color: #ffb4a8; }
+.running > .step-mark { border-color: transparent; }
+.step-mark .ring { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #3e63ff33; border-top-color: #a5c6ff; animation: spin 1s linear infinite; }
+@keyframes step-pop { from { transform: scale(.4); opacity: 0; } }
+
+/* Imágenes: aparecen enfocándose; varias forman una galería deslizable. */
+.image-single .live-image { margin: 0; }
+.image-gallery { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 4px; }
+.image-gallery .live-image { flex: 0 0 min(78%, 300px); scroll-snap-align: start; margin: 0; }
+.live-image { position: relative; border-radius: 12px; overflow: hidden; background: linear-gradient(110deg, #8fb4ff08 30%, #8fb4ff1c 50%, #8fb4ff08 70%) 0 0 / 200% 100%; min-height: 120px; }
+.live-image.loading { animation: shimmer 1.6s linear infinite; }
+.live-image img { display: block; opacity: 0; filter: blur(16px) saturate(.6); transform: scale(1.04); transition: opacity .6s ease, filter .9s ease, transform .9s cubic-bezier(.2, .8, .2, 1); }
+.live-image.ready { min-height: 0; background: none; }
+.live-image.ready img { opacity: 1; filter: none; transform: none; }
+.live-image figcaption { padding: 8px 2px 2px; color: #9fb3d0; font-size: .76rem; line-height: 1.4; }
+.image-error { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: #8fa4c4; font-size: .8rem; }
+
+/* Código: las líneas se escriben de izquierda a derecha. */
+.code-view code { display: block; padding: 0; background: none; border: 0; border-radius: 0; font: inherit; color: #d4e2f5; }
+.code-view pre { margin: 0; max-height: 300px; overflow: auto; padding: 10px 12px; border-radius: 12px; background: #070d16; font: .76rem/1.6 var(--mono); white-space: pre; }
+.code-line { display: block; animation: type-line .5s steps(24, end) backwards; animation-delay: calc(var(--i, 0) * 55ms); }
+.code-line i { display: inline-block; width: 2.6em; margin-right: 10px; color: #4f6383; font-style: normal; text-align: right; user-select: none; }
+@keyframes type-line { from { clip-path: inset(0 100% 0 0); } }
+
+/* Tarjeta fantasma mientras se escribe el bloque. */
+.draft-card { border-style: dashed; }
+.draft-card > header b { color: #a9bedb; font-weight: 500; }
+.draft-bars { display: flex; align-items: flex-end; gap: 8px; height: 90px; padding: 4px 6px 0; border-bottom: 1px solid #8ba5ca26; }
+.draft-bars i { flex: 1; height: calc(var(--h) * 100%); border-radius: 4px 4px 0 0; background: #8fb4ff2a; transform-origin: bottom;
+  animation: draft-bar 1.4s ease-in-out infinite alternate; animation-delay: calc(var(--i) * -.23s); }
+@keyframes draft-bar { from { transform: scaleY(.35); opacity: .55; } }
+.draft-lines { display: grid; gap: 10px; padding: 4px 0; }
+.draft-lines i, .draft-image { display: block; border-radius: 6px; background: linear-gradient(110deg, #8fb4ff10 30%, #8fb4ff2e 50%, #8fb4ff10 70%) 0 0 / 200% 100%; animation: shimmer 1.6s linear infinite; }
+.draft-lines i { height: 10px; width: calc(var(--w) * 100%); animation-delay: calc(var(--i) * .12s); }
+.draft-image { height: 130px; border-radius: 12px; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+/* Escenario vivo del agente general. */
+.general-canvas { flex: 1 1 auto; min-height: 120px; display: flex; flex-direction: column; animation: canvas-in .5s cubic-bezier(.2, .8, .2, 1); }
+@keyframes canvas-in { from { opacity: 0; transform: translateY(14px); } }
+.canvas-head { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 0 2px 6px 4px; color: #93a8c6; font-size: .72rem; letter-spacing: .04em; text-transform: uppercase; }
+.canvas-dot { width: 6px; height: 6px; border-radius: 50%; background: #8faed7; }
+.canvas-dot.on { background: #8ef0b0; box-shadow: 0 0 10px #8ef0b0aa; animation: presence-dot 1.6s ease-in-out infinite; }
+.canvas-close { width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; color: #9fb3d0; }
+.canvas-close:hover { background: #ffffff0a; color: #e1ecfb; }
+/* Columna flexible (no rejilla): con overflow oculto, las filas de una rejilla con scroll aplastarían las tarjetas. */
+.canvas-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 0 0 12px; overscroll-behavior: contain;
+  scrollbar-width: thin; -webkit-mask-image: linear-gradient(#000 calc(100% - 18px), #0000); mask-image: linear-gradient(#000 calc(100% - 18px), #0000); }
+.general-canvas .presentation-card { flex: 0 0 auto; background: #0f1a27c2; border-color: #9bb8df1f; border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  animation: card-in .6s cubic-bezier(.2, .8, .2, 1) backwards; }
+@keyframes card-in { from { opacity: 0; transform: translateY(16px) scale(.98); filter: blur(6px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .presentation-card, .presentation-card *, .general-canvas { animation: none !important; transition: none !important; }
+  .live-image img { opacity: 1; filter: none; transform: none; }
+  .stat-spark path { stroke-dashoffset: 0; }
+}
+@media (prefers-reduced-transparency: reduce) { .general-canvas .presentation-card { background: #0f1a27; backdrop-filter: none; } }

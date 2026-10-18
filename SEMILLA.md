@@ -2,11 +2,25 @@
 
 > Leer antes de trabajar. Actualizar las secciones 0, 4 y 5 al terminar.
 
-Última actualización anterior: 2026-10-18, 00:05 Europe/Berlin. Autor: Codex (agente general: voz, partículas, continuidad y presentaciones).
+Última actualización anterior: 2026-10-18, Europe/Berlin. Autor: Claude (agente general: respuestas breves por voz y texto solo bajo demanda).
 
-Última actualización: 2026-10-18, Europe/Berlin. Autor: Claude (agente general: respuestas breves por voz y texto solo bajo demanda).
+Última actualización: 2026-10-18, 08:50 Europe/Berlin. Autor: Claude (agente general: interfaz viva y más animaciones).
 
 ## 0. Estado en una línea
+
+**Agente general: interfaz viva y más animaciones (18 octubre, Claude). Publicado.**
+La esfera tiene 21 formas con color y animación propios según la acción real: escribir código →
+líneas con cursor que teclea; terminal → «>_» que escribe y suben líneas de salida; base de datos
+(psql, mysql, sqlite3, redis-cli, SQL…) → cilindro con banda de consulta; revisar servidor → pulso
+de electrocardiograma; leer → página con haz; buscar en código → radar; web → globo; compilar →
+engrane; git → hélice; pruebas → anillo con cometa; subagentes → racimo; pensando → red neuronal
+con sinapsis; respondiendo → ondas; gráfica → barras ecualizador; tabla → rejilla; imagen → marco
+que se revela; cola → reloj de arena; permiso → escudo; error → se agrieta. Onda de color al
+terminar cada paso. Arriba, el plan del agente («1/3 Desplegando»). Bajo la esfera, la **vista en
+vivo**: tarjetas ```cm-ui que se actualizan en sitio por `id` (barras/línea/área/dona, tabla, cifras
+con contador y tendencia, progreso con pasos, imagen, código, HTML, archivo), esqueleto mientras se
+escriben y «Resultado» al terminar (X para ocultar). Imágenes del agente en `/srv/projects/.cm-media/`
+→ `/api/media/<nombre>` con sesión. En celular horizontal, esfera y vista van lado a lado.
 
 **Agente general: respuestas breves y habladas, texto solo si se pide (18 octubre, Claude). Publicado.**
 El prompt (`GENERAL_PRESENTATION_GUIDE` + `general_prompt()` en `cm/runs.py`, también llega a
@@ -283,6 +297,19 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Interfaz viva y más animaciones (18 octubre)
+
+- Falta que el usuario lo pruebe en su celular con una tarea real (p. ej. «muéstrame en una
+  gráfica en vivo el CPU de los contenedores»). Que el agente use tarjetas con `id` depende del
+  modelo; la guía está en `GENERAL_PRESENTATION_GUIDE` (`cm/runs.py`).
+- Rendimiento: 1250 partículas con efecto por forma; si va lento, bajar `count` en `Orb.jsx`.
+- Cada forma dura al menos 1,4 s (`DWELL`) para que los pasos rápidos no parpadeen.
+- Codex entrega mensajes completos (sin streaming): con Codex no hay esqueleto mientras escribe.
+- Imágenes: solo nombres simples en `.cm-media` (png/jpg/gif/webp/svg/avif ≤ 15 MB, se borran a
+  los 30 días), archivos de proyecto o data URI ≤ 90 KB. Máximo 8 tarjetas y 6 bloques por mensaje.
+- Rollback: no quedó imagen previa etiquetada; volver con el versionador al commit `9ecd921` y
+  `docker compose up -d --build`.
 
 ### Respuestas breves por voz (18 octubre)
 
@@ -659,6 +686,32 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Interfaz viva y más animaciones (Claude, 18 octubre)
+
+- `particles.js` reescrito: `SHAPES`, `TINTS`, `MOTION`, `shapeFx` (efecto por partícula según el
+  tiempo en la forma), `neuralPairs`, `mixColor`. `Orb.jsx`: transición con apagado gradual del
+  efecto anterior, paleta teñida, giro/vaivén por forma, sinapsis, onda `pulse` (ok/error/done),
+  `DWELL`; eje y invertido para el lienzo.
+- `general.js`: base de datos, leer/buscar, «Escribiendo código», presencia «Respondiendo» o
+  «Preparando una gráfica…» según el bloque en curso (`draftingType`), `planOf` (TodoWrite/Codex).
+- `presentations.js`: tipos stats, progress, image, code; `liveSpecs` (tarjetas por id con versión),
+  validadores `statItems`, `progressOf`, `imageSources`, `codeOf`. `Presentations.jsx` + `live.css`:
+  gráficas animadas, tabla con filas que entran y celdas que destellan, cifras con contador,
+  progreso, imagen con desenfoque al cargar, código, `DraftCard`, `LiveStage`.
+- `views/General.jsx`: plan, `--presence` por forma, pulso al completar herramientas, `LiveStage`
+  de la ejecución actual o la pedida en esta visita; `.general-body` (`display: contents`) permite
+  el modo lado a lado con poca altura en horizontal.
+- Backend: `cm/media.py` + `GET /api/media/{name}` (sesión, `O_NOFOLLOW`, archivo regular ≤ 15 MB,
+  CSP sandbox, nosniff); `media.prepare()` crea la carpeta (0700) y poda a 30 días. Guía
+  «Interfaz viva» en `cm/runs.py` con tipos, `id` en vivo, carpeta de imágenes y ejemplos.
+- Pruebas: **174 Python + 24 frontend OK**. Nuevo `tools/verify_general_alive_browser.cjs`
+  (390/320/768/1440/740×390): formas con color, plan, tarjetas por id sin duplicarse (progreso
+  20→80, cifras 42.5→57, tabla que crece, barras que se mueven), imagen, código, dona, resultado al
+  terminar, ocultar, «Ver texto», movimiento reducido. Capturas en `artifacts/general-alive-20261018/`.
+  También `GENERAL_BROWSER_OK`, `GENERAL_LIVE_OK` y `GENERAL_KEYBOARD_OK`.
+- Publicado con `docker compose up -d --build --wait`: healthy; `/health` y `/agent` 200,
+  `/api/media/x.png` 401 sin sesión, bundle con `general-canvas`; `/srv/projects/.cm-media` (dv1, 0700).
 
 ### Respuestas breves por voz (Claude, 18 octubre)
 
