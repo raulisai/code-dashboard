@@ -1,9 +1,10 @@
 import React from 'react';
-import {Activity, ArrowRight, Bot, ChevronRight, CircleCheck, Clock3, Container, FolderOpen, Globe2, ListTodo, Server, Settings, ShieldQuestion, Sparkles} from 'lucide-react';
+import {Activity, ArrowRight, Gauge, Bot, ChevronRight, CircleCheck, Clock3, Container, FolderOpen, Globe2, ListTodo, Server, Settings, ShieldQuestion, Sparkles} from 'lucide-react';
 import {useApp} from '../App.jsx';
 import {bytes, navigate, providerLabel} from '../lib.js';
 import {Meter, ProviderMark, Spinner} from '../ui.jsx';
 import {projectLabel, taskHref} from '../general.js';
+import Quota from '../Quota.jsx';
 
 function go(event, to) { event.preventDefault(); navigate(to); window.scrollTo(0, 0); }
 
@@ -47,6 +48,10 @@ export default function Home() {
       <section className="dashboard-pending glass-panel" aria-label="Tareas pendientes">
         <header className="dashboard-section-head"><div><span className="section-icon"><ListTodo size={18}/></span><h2>Tareas pendientes <span className="count">{queued.length}</span></h2></div><a href="/queue" onClick={event => go(event, '/queue')}>Ver cola <ChevronRight size={14}/></a></header>
         {queued.length ? <div className="dashboard-task-list">{queued.slice(0, 3).map(task => <a className="dashboard-task" key={task.id} href={taskHref(task)} onClick={event => go(event, taskHref(task))}><span className="pending-icon"><Clock3 size={19}/></span><div><b>{projectLabel(task.project)}</b><p>{task.title || 'Petición al agente'}</p><small>{providerLabel(task.provider)} · {task.priority === 'alta' ? 'Prioridad alta' : 'En cola'}</small></div><ChevronRight size={16}/></a>)}{queued.length > 3 && <a className="dashboard-more" href="/queue" onClick={event => go(event, '/queue')}>Ver las {queued.length} peticiones <ArrowRight size={14}/></a>}</div> : <div className="dashboard-empty compact"><CircleCheck size={21}/><div><b>No hay peticiones en espera</b><p>La cola está al día.</p></div></div>}
+      </section>
+      <section className="dashboard-quota glass-panel" aria-label="Cupo de Claude y Codex">
+        <header className="dashboard-section-head"><div><span className="section-icon"><Gauge size={18}/></span><h2>Cupo de Claude y Codex</h2></div><a href="/settings" onClick={event => go(event, '/settings')}>Detalle <ChevronRight size={14}/></a></header>
+        <Quota/>
       </section>
       <a className="dashboard-project-link glass-panel" href="/projects" onClick={event => go(event, '/projects')}><span className="section-icon"><FolderOpen size={22}/></span><div><b>Explora tus proyectos</b><small>{state.projects.length} en total · {online} en línea</small></div><ArrowRight size={19}/></a>
     </div>

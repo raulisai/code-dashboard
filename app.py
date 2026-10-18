@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from aiohttp import web, WSMsgType
 
-from cm import auth, chats, config, dockerapi, files, gitops, lifecycle, projects, push, repos, runs, speech, tasks, tmux, websecurity, terminal as terminalio
+from cm import auth, chats, config, dockerapi, files, gitops, lifecycle, projects, push, quota, repos, runs, speech, tasks, tmux, websecurity, terminal as terminalio
 
 EXECUTOR = ThreadPoolExecutor(max_workers=16, thread_name_prefix='cm-io')
 PUBLIC_API = {'/api/login', '/api/login/mfa', '/api/logout'}
@@ -417,6 +417,10 @@ async def repo_check(request):
     except repos.RepoError as error: return fail(str(error), 422)
 
 
+async def quota_get(request):
+    return reply(await blocking(quota.read, request.query.get('refresh') == '1'))
+
+
 async def github_get(request):
     return reply(await blocking(repos.github_status))
 
@@ -732,7 +736,7 @@ def make_app():
         web.post('/api/approvals', approval_post), web.post('/api/rules', rules_post),
         web.post('/api/tasks', tasks_post), web.post('/api/projects', projects_post),
         web.get('/api/projects/delete-preview', project_delete_preview), web.get('/api/projects/trash', project_trash),
-        web.post('/api/projects/repo-check', repo_check), web.get('/api/github', github_get), web.post('/api/github', github_post),
+        web.post('/api/projects/repo-check', repo_check), web.get('/api/quota', quota_get), web.get('/api/github', github_get), web.post('/api/github', github_post),
         web.post('/api/docker', docker_post), web.get('/api/logs', logs_get),
         web.get('/api/jobs', jobs_get), web.get(r'/api/jobs/{job_id}', job_get), web.post('/api/jobs', jobs_post),
         web.get('/api/files/list', files_list), web.get('/api/files/read', files_read), web.get('/api/files/raw', files_raw),

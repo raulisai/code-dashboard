@@ -8,6 +8,13 @@
 
 ## 0. Estado en una línea
 
+**Cupo de Claude y Codex en Inicio y Ajustes (18 octubre, Claude). Publicado.** Tomado de
+`raulisai/utilizetokens`: `bin/cm-quota.py` (host, vía tmux como `cm-repo.py`) lee Claude con el
+token OAuth del CLI → `api.anthropic.com/api/oauth/usage` y Codex con `codex app-server --stdio`
+(`account/rateLimits/read`). `cm/quota.py` cachea 2 min; `GET /api/quota[?refresh=1]`.
+UI `Quota.jsx`: barras de 5 h y semanal por agente, «% libre», reinicio, créditos y «Ahora conviene X».
+**172 Python + 19 Node OK**; lectura real desde el contenedor (Codex 5 h al 100 %, Claude 61 %).
+
 **Agente general: entrada animada y partículas por acción (18 octubre, Claude).**
 Al entrar, la esfera de la barra inferior crece hacia el centro y en su hueco aparece
 girando el botón «+» de opciones (solo celular; en escritorio sigue bajo la esfera).
@@ -268,6 +275,15 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Cupo de Claude y Codex (18 octubre)
+
+- El endpoint de uso de Anthropic **no está documentado**: puede cambiar. Si falla, la UI
+  muestra el error y conserva la última lectura. Solo funciona con sesión del CLI
+  (`claude auth login`), no con `setup-token`. El token nunca se imprime ni se guarda.
+- Codex solo informa con sesión ChatGPT; con API key se indica que se ve en la plataforma.
+- No cambia solo de agente por cupo en este módulo (eso lo hace el agente general); solo informa.
+- Rollback: imagen `codex-dashboard:before-quota-20261018`.
 
 ### Entrada animada + formas de partículas (18 octubre)
 
@@ -627,6 +643,14 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Cupo de Claude y Codex
+
+- `bin/cm-quota.py`, `cm/quota.py` (normaliza, limita a 0–100, caché 120 s, un refresco a la vez,
+  conserva lectura vieja si falla), `repos.host_op(..., helper=)` reutilizado, ruta `/api/quota`.
+- `frontend/src/Quota.jsx`, `quota.js`, `quota.css`; tarjeta en Inicio y bloque en Ajustes.
+- Pruebas `tests/test_quota.py` (4) y `frontend/tests/quota.test.mjs` (3). Navegador 360/1440
+  (API simulada) en la URL real: contenido, sin desbordamiento. Producción: healthy, `/api/quota` 401 sin sesión.
 
 ### Entrada animada y formas por acción (Claude, 18 octubre)
 

@@ -140,6 +140,14 @@ El esfuerzo se aplica con `--effort` en Claude y `model_reasoning_effort` en Cod
 [documentación Claude Code](https://code.claude.com/docs/en/model-config),
 [OpenAI Docs](https://developers.openai.com/codex/config-reference/).
 
+## Cupo de Claude y Codex
+
+Inicio y Ajustes muestran cuánto te queda en cada agente (ventanas de 5 horas y semanal,
+reinicio, créditos y cuál conviene ahora). Se lee en el servidor con la sesión de cada CLI
+(`claude auth login`, `codex login`) y se actualiza cada 2 minutos o con **Actualizar**.
+Basado en [utilizetokens](https://github.com/raulisai/utilizetokens); el endpoint de uso de
+Anthropic no está documentado y podría cambiar.
+
 ## Agente general (esfera central)
 
 La esfera de la barra abre **Agente** (`/agent`): conoce los proyectos, administra

@@ -50,8 +50,8 @@ def valid_branch(branch):
     return not branch or (BRANCH.fullmatch(branch) and '..' not in branch)
 
 
-def host_op(payload, timeout):
-    """Ejecuta bin/cm-repo.py en el host (tmux) y espera su result.json."""
+def host_op(payload, timeout, helper=HELPER):
+    """Ejecuta un helper de bin/ (por defecto cm-repo.py) en el host (tmux) y espera su result.json."""
     if not LIMIT.acquire(timeout=10): raise RepoError('Hay otras operaciones de repositorio en curso; reintenta en unos segundos')
     op_id = time.strftime('%Y%m%d-%H%M%S') + '-' + secrets.token_hex(3)
     folder = config.CONFIG / 'repo-ops' / op_id
@@ -59,7 +59,7 @@ def host_op(payload, timeout):
     try:
         folder.mkdir(parents=True, mode=0o700)
         write_json(folder / 'request.json', payload)
-        ok, error = tmux.new_session(session, config.HOST_PROJECTS, ['/usr/bin/python3', HELPER, config.host_path(folder)])
+        ok, error = tmux.new_session(session, config.HOST_PROJECTS, ['/usr/bin/python3', helper, config.host_path(folder)])
         if not ok: raise RepoError(f'No se pudo ejecutar Git en el servidor: {error}')
         started = time.monotonic()
         while time.monotonic() - started < timeout:

@@ -1,0 +1,15 @@
+.quota-grid { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 560px) { .quota-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.quota-provider { min-width: 0; padding: 12px; border-radius: 14px; background: #050a123f; border: 1px solid #9bb8df1c; display: grid; gap: 10px; align-content: start; }
+.quota-name { display: flex; align-items: center; gap: 8px; }
+.quota-window { display: grid; gap: 5px; }
+.quota-top { display: flex; justify-content: space-between; gap: 8px; font-size: .78rem; color: var(--muted, #8a98ad); }
+.quota-top b { color: var(--text, #e7eef8); font-weight: 600; }
+.quota-track { height: 6px; border-radius: 6px; background: #ffffff14; overflow: hidden; }
+.quota-track i { display: block; height: 100%; border-radius: 6px; background: var(--ok, #2de792); transition: width .5s ease; }
+.quota-window.warn .quota-track i { background: #e3b341; }
+.quota-window.bad .quota-track i { background: #f85149; }
+.quota-window small, .quota-note { font-size: .74rem; color: var(--muted, #8a98ad); }
+.quota-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
+.quota-foot small { min-width: 0; }
+.quota-foot .btn { flex-shrink: 0; }
