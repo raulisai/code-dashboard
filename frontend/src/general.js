@@ -105,7 +105,7 @@ export function headline(run, queued = 0) {
 }
 
 /** Estado compacto de la esfera: solo actividad real, sin resumir proyectos ni comandos. */
-export function presence({run, queued = 0, phase = 'idle', speaking = false, sending = false, connected = true, error = ''} = {}) {
+export function presence({run, queued = 0, phase = 'idle', speaking = false, sending = false, connected = true, error = '', ready = false} = {}) {
   if (error) return {kind: 'error', title: 'Necesito tu atención', subtitle: error};
   if (phase === 'opening') return {kind: 'listening', title: 'Abriendo micrófono'};
   if (phase === 'listening') return {kind: 'listening', title: 'Te escucho'};
@@ -123,11 +123,13 @@ export function presence({run, queued = 0, phase = 'idle', speaking = false, sen
   if (queued) return {kind: 'queue', title: 'En cola'};
   if (run?.status === 'error') return {kind: 'error', ...headline(run)};
   if (run?.status === 'stopped') return {kind: 'stopping', title: 'Detenido'};
+  // Respuesta que no se pudo leer en voz alta: se avisa, pero el texto sigue oculto hasta pedirlo.
+  if (ready) return {kind: 'done', title: 'Respuesta lista'};
   return {kind: 'idle', title: 'Disponible'};
 }
 
-/** Texto apto para voz: sin Markdown, código ni enlaces largos. */
-export function speakable(text, limit = 700) {
+/** Texto apto para voz: sin Markdown, código ni enlaces largos, y corto (unos 25 s). */
+export function speakable(text, limit = 420) {
   const plain = String(text || '')
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/`([^`]+)`/g, '$1')

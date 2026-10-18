@@ -25,6 +25,7 @@ class GeneralAgentTests(IsolatedConfig, unittest.TestCase):
         self.assertIn('- alpha: Tienda de tacos en línea.', meta['system_prompt'])
         self.assertIn('- beta:', meta['system_prompt'])
         self.assertIn('Nuevo proyecto', meta['system_prompt'])
+        self.assertIn('el texto solo se muestra si el usuario lo pide', meta['system_prompt'])
 
     def test_codex_gets_catalog_on_first_and_resumed_messages(self):
         _, first = self.start('codex')
@@ -33,6 +34,7 @@ class GeneralAgentTests(IsolatedConfig, unittest.TestCase):
         meta, resumed = self.start('codex')
         self.assertEqual(meta['resume_id'], 'thread-1')
         self.assertTrue(resumed.startswith('[Contexto de Codex Manager] Proyectos actuales: alpha, beta.'))
+        self.assertIn('una a tres frases cortas', resumed)
 
     def test_regular_projects_keep_their_folder_and_versioning(self):
         with patch.object(tmux, 'new_session', return_value=(True, '')):

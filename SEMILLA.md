@@ -4,9 +4,17 @@
 
 Última actualización anterior: 2026-10-18, 00:05 Europe/Berlin. Autor: Codex (agente general: voz, partículas, continuidad y presentaciones).
 
-Última actualización: 2026-10-18, Europe/Berlin. Autor: Claude (quitar el botón verde «Desplegar» de la cabecera del proyecto, reintento tras el límite de Codex).
+Última actualización: 2026-10-18, Europe/Berlin. Autor: Claude (agente general: respuestas breves por voz y texto solo bajo demanda).
 
 ## 0. Estado en una línea
+
+**Agente general: respuestas breves y habladas, texto solo si se pide (18 octubre, Claude). Publicado.**
+El prompt (`GENERAL_PRESENTATION_GUIDE` + `general_prompt()` en `cm/runs.py`, también llega a
+Codex reanudado) pide 1–3 frases cortas (~40 palabras), resultado y no proceso, sin listas
+salvo que pida detalle. Al terminar lo pedido ya **no se abre** el panel «Tu respuesta»: se lee
+en voz alta (también si se escribió; `speakable` recorta a 420 caracteres) y bajo el estado
+aparece un botón pequeño «Ver texto». Con la voz apagada el estado dice «Respuesta lista».
+Arreglado de paso: `Quota.jsx` rompía Inicio si `/api/quota` venía incompleto.
 
 **Cupo de Claude y Codex en Inicio y Ajustes (18 octubre, Claude). Publicado.** Tomado de
 `raulisai/utilizetokens`: `bin/cm-quota.py` (host, vía tmux como `cm-repo.py`) lee Claude con el
@@ -275,6 +283,14 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Respuestas breves por voz (18 octubre)
+
+- Falta que el usuario lo pruebe en su celular: en iOS la voz se desbloquea con el gesto de
+  enviar o tocar la esfera; si el navegador no habla, queda «Respuesta lista» + «Ver texto».
+- La brevedad depende del modelo: si sigue largo, endurecer el prompt o bajar `speakable`.
+- El historial completo sigue en «Ver conversación» (arriba a la derecha) y en «+» → Respuesta.
+- Rollback: imagen `codex-dashboard:before-brief-20261018`.
 
 ### Cupo de Claude y Codex (18 octubre)
 
@@ -643,6 +659,26 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Respuestas breves por voz (Claude, 18 octubre)
+
+- `cm/runs.py`: bloque «Respuestas» al inicio de `GENERAL_PRESENTATION_GUIDE` (voz, 1–3 frases,
+  detalle solo si lo pide) y presentaciones solo si las pide; `general_prompt()` ya no pide
+  «frase final de resumen» (sobraba con respuestas cortas).
+- `views/General.jsx`: estado `fresh` ({id, heard}) para la respuesta a lo pedido en esta
+  visita; se habla con `say()` sea voz o texto (`unlockSpeech()` también al enviar escrito),
+  sin `setResponseOpen(true)`. Botón `.general-reveal` «Ver texto» bajo el estado; abrir la
+  respuesta (botón o «+») limpia `fresh`; enviar otra cosa también.
+- `general.js`: `presence({ready})` → `{kind: 'done', title: 'Respuesta lista'}`; `speakable` 420.
+- `Quota.jsx`: proveedor ausente → estado de error en vez de excepción.
+- Pruebas: `test_general.py` (prompt Claude y Codex reanudado), `general.test.mjs` (ready,
+  límite de voz). `verify_general_browser.cjs` simula `speechSynthesis`, exige que no se abra
+  el texto, que se lea, «Ver texto» dentro de pantalla y que lo abra (captura `answered-*`).
+  `verify_general_live_browser.cjs` usa el «+» para «Terminar conversación» (estaba desfasado)
+  y «Ver texto». **172 Python + 19 frontend OK**, `GENERAL_BROWSER_OK` (6 tamaños, local y
+  URL real 390/1440), `GENERAL_LIVE_OK`, `GENERAL_KEYBOARD_OK`.
+- Publicado con `docker compose up -d --build --wait`: ambos healthy; `/`, `/agent`, `/health`
+  200, API anónima 401; el bundle publicado contiene «Ver texto».
 
 ### Cupo de Claude y Codex
 

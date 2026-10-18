@@ -3,6 +3,8 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || '/home/dv1/.npm/_npx
 const fs=require('node:fs');
 const base=process.env.CM_TEST_URL || 'http://127.0.0.1:4178', out=process.env.CM_ARTIFACTS || 'artifacts/general-live-responsive-20261018';
 const assert=(ok,msg)=>{if(!ok)throw Error(msg);};
+// Los controles viven plegados en el botón «+».
+const control=async(page,name)=>{const toggle=page.getByRole('button',{name:'Controles',exact:true});if(await toggle.getAttribute('aria-expanded')!=='true')await toggle.click();await page.getByRole('group',{name:'Controles del agente general'}).getByRole('button',{name,exact:true}).click();};
 (async()=>{
  fs.mkdirSync(out,{recursive:true});
  const browser=await chromium.launch({headless:true,args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']});
@@ -51,10 +53,11 @@ const assert=(ok,msg)=>{if(!ok)throw Error(msg);};
   agent={...agent,rev:'3',working:[],runs:[{...agent.runs[0],status:'done',result:{text:'Listo. El servidor está en línea.'}}]};
   await page.waitForFunction(()=>window.recognizers.length>=2&&window.recognizers[1].active,null,{timeout:8000});
   assert(await page.evaluate(()=>window.spoken.some(x=>x.includes('El servidor'))),'No leyó la respuesta');
+  assert(await page.locator('.general-response').count()===0,'El texto de la respuesta se abrió sin pedirlo');
   // El navegador falla: vuelve al micrófono local y sigue permitiendo detenerlo.
   await page.evaluate(()=>window.recognizers.at(-1).onerror({error:'network'}));
   await page.locator('.live-transcript',{hasText:'Voz local'}).waitFor({timeout:8000});
-  await page.getByRole('button',{name:'Terminar conversación',exact:true}).click();
+  await control(page,'Terminar conversación');
   assert(posts.length===1,'Duplicó la frase al cambiar el motor de voz');
   const hideResponse=page.getByRole('button',{name:'Ocultar respuesta',exact:true});
   if(await hideResponse.isVisible())await hideResponse.click();
@@ -68,7 +71,7 @@ const assert=(ok,msg)=>{if(!ok)throw Error(msg);};
   // Cambiar datos de una respuesta anterior no debe volver a desplegarla sin pedirla.
   await page.waitForTimeout(1800);
   assert(await page.locator('.general-response').count()===0,'Una respuesta anterior se abrió sola al cambiar el historial');
-  await page.getByRole('button',{name:'Ver respuesta',exact:true}).click();
+  await page.getByRole('button',{name:'Ver texto',exact:true}).click();
   await page.locator('.general-response .presentation-card',{hasText:'Consumo'}).waitFor({timeout:8000});
   assert(await page.locator('.presentation-card').count()===4,'No renderizó las cuatro presentaciones');
   await page.getByRole('button',{name:'Línea',exact:true}).click();

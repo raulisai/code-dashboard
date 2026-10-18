@@ -79,4 +79,8 @@ test('la presencia distingue actividad real, voz, cola y reposo sin datos perman
   assert.deepEqual(presence({run}), {kind: 'docker', title: 'Desplegando'});
   assert.equal(presence({run: {status: 'error', providers_tried: 'codex,claude'}}).title, 'Ahora no hay conexión disponible');
   assert.equal(presence({error: 'Sin red', phase: 'listening'}).kind, 'error');
+  // Respuesta que no se leyó en voz alta: se avisa sin mostrar el texto; hablando manda la voz.
+  assert.deepEqual(presence({ready: true, run: {status: 'done'}}), {kind: 'done', title: 'Respuesta lista'});
+  assert.equal(presence({ready: true, speaking: true}).kind, 'speaking');
+  assert.ok(speakable('Frase corta. '.repeat(100)).length <= 420);
 });

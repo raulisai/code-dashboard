@@ -50,6 +50,9 @@
 .general-status[data-kind='error'] { color: #ffc3b8; }
 .general-status[data-kind='error'] .presence-dot { background: #ff9e92; animation: none; }
 @keyframes presence-dot { 50% { opacity: .35; } }
+.general-status[data-kind='done'] { color: #bfe3cf; }
+.general-reveal { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 12px; border: 1px solid #8faed733; border-radius: 999px; background: transparent; color: #8fa3bd; font: inherit; font-size: .78rem; cursor: pointer; }
+.general-reveal:hover, .general-reveal:focus-visible { color: #d6e3f5; border-color: #8faed780; }
 .live-transcript { color: #b6c8df; font-size: .88rem; text-align: center; max-width: 40ch; max-height: 18dvh; overflow-y: auto; line-height: 1.5; overflow-wrap: anywhere; }
 /* Lo que se ejecuta ahora: texto translúcido sin caja; tocarlo abre la actividad completa. */
 .general-live { flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 2px 4px; border: 0; background: none; text-align: left;

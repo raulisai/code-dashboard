@@ -32,6 +32,8 @@ export default function General() {
   const [menu, setMenu] = useState(false), [controls, setControls] = useState(false), [sheet, setSheet] = useState(false), [details, setDetails] = useState(false), [responseOpen, setResponseOpen] = useState(false), [arrival, setArrival] = useState('');
   const requestedTask = useRef(null), menuRef = useRef(null), dockRef = useRef(null), toggleRef = useRef(null), inputRef = useRef(null), sheetInputRef = useRef(null);
   const [slot, setSlot] = useState(null);
+  // Respuesta a lo pedido en esta visita: se escucha y su texto solo se abre si se pide ({id, heard}).
+  const [fresh, setFresh] = useState(null);
   const [viewport, setViewport] = useState(() => ({height: window.visualViewport?.height || window.innerHeight, keyboard: false}));
   const inFlight = useRef(false), transcript = useRef(null), continuous = useRef(false), waiting = useRef(false), voiceRef = useRef(null), resumeTimer = useRef(null), editing = useRef(false);
   continuous.current = conversation; editing.current = typing;
@@ -86,8 +88,14 @@ export default function General() {
     rev.current = result.rev;
     for (const run of result.runs) {
       const before = previous.current[run.id];
-      if (run.status === 'done' && run.task_id === requestedTask.current) { setResponseOpen(true); requestedTask.current = null; }
-      if (before !== 'done' && run.status === 'done' && waiting.current === run.task_id && voiceTasks().includes(run.task_id)) { waiting.current = false; if (!speak || voiceRef.current.phase !== 'idle' || !say(run.result?.text)) resumeListening(); }
+      if (before !== 'done' && run.status === 'done' && run.task_id === requestedTask.current) {
+        requestedTask.current = null;
+        const viaVoice = waiting.current === run.task_id && voiceTasks().includes(run.task_id);
+        if (viaVoice) waiting.current = false;
+        const heard = speak && voiceRef.current.phase === 'idle' && say(run.result?.text);
+        if (viaVoice && !heard) resumeListening();
+        setFresh({id: run.task_id, heard});
+      }
       previous.current[run.id] = run.status;
     }
     if (!result.working.length && !result.queue.length && result.runs.at(-1)?.status === 'error' && waiting.current) { waiting.current = false; continuous.current = false; setConversation(false); }
@@ -114,7 +122,7 @@ export default function General() {
   const reply = !running && latest?.status === 'done' ? latest.result?.text : '';
   const showResponse = responseOpen && !!reply;
   const status = presence({run: latest, queued: data?.queue.length || 0, phase: voice.phase, speaking, sending: sending || !!pending,
-    connected: !!data, error: error || voice.error});
+    connected: !!data, error: error || voice.error, ready: !!fresh && !fresh.heard && !showResponse});
   const StatusIcon = STATE_ICONS[status.kind] || Sparkles;
   const typingLine = running ? ([...events].reverse().find(event => event.t === 'text' && !event.sub)?.text || '').split('\n').filter(Boolean).at(-1) : '';
   // Arriba, en texto translúcido: los últimos comandos tal cual se ejecutan (el más reciente, más visible).
@@ -163,7 +171,7 @@ export default function General() {
     inFlight.current = true; setSending(true);
     try {
       const result = await post('/api/agent/send', {project: GENERAL, chat_id: 'main', provider: nextProvider, text: value});
-      requestedTask.current = result.task?.id || null; setResponseOpen(false);
+      requestedTask.current = result.task?.id || null; setResponseOpen(false); setFresh(null);
       if (viaVoice) waiting.current = result.task?.id || true;
       try { if (viaVoice && result.task?.id) sessionStorage.setItem(VOICE_TASKS, JSON.stringify([...voiceTasks().slice(-20), result.task.id])); } catch { /* el envío ya está confirmado */ }
       rev.current = ''; try { await load(); } catch (err) { setError(err.message); }
@@ -185,7 +193,8 @@ export default function General() {
   const reset = () => { setMenu(false); if (window.confirm('¿Empezar una conversación nueva con el agente general? El historial se conserva.')) act(() => post('/api/agent/reset', {project: GENERAL, chat_id: 'main', provider: nextProvider})); };
   const toggleSpeak = () => { const value = !speak; setSpeak(value); remember(SPEAK_KEY, value ? 'on' : 'off'); if (!value) { setSpeaking(false); try { speechSynthesis.cancel(); } catch { /* sin voz */ } } };
   const answer = (approval, decision, rememberRule = false) => act(() => post('/api/approvals', {run_id: approval.run_id, request_id: approval.id, decision, remember: rememberRule}), false);
-  const submitTyped = async event => { event?.preventDefault(); if (await send(text)) { setText(''); setTyping(false); } };
+  const submitTyped = async event => { event?.preventDefault(); unlockSpeech(); if (await send(text)) { setText(''); setTyping(false); } };
+  const openResponse = (open = true) => { setResponseOpen(open); if (open) setFresh(null); };
 
   const orbState = voice.phase === 'listening' ? 'listening' : voice.phase !== 'idle' || sending || pending ? 'thinking' : speaking ? 'speaking' : running ? 'working' : busy || waiting.current ? 'thinking' : 'idle';
   const coarse = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
@@ -206,7 +215,7 @@ export default function General() {
           </button>
           <button className={`general-action ${typing ? 'selected' : ''}`} onClick={pick(typing ? () => setTyping(false) : openTyping)} aria-label="Escribir" aria-expanded={typing} title="Escribir"><Keyboard size={20}/><span>Escribir</span></button>
           <button className="general-action" onClick={pick(() => setDetails(true))} aria-label="Ver actividad" title="Ver actividad"><Activity size={20}/><span>Actividad</span>{running && <i className="action-live"/>}</button>
-          {reply && <button className={`general-action ${showResponse ? 'selected' : ''}`} onClick={pick(() => setResponseOpen(!responseOpen))} aria-label="Ver respuesta" aria-expanded={showResponse} title="Ver respuesta"><MessagesSquare size={20}/><span>Respuesta</span></button>}
+          {reply && <button className={`general-action ${showResponse ? 'selected' : ''}`} onClick={pick(() => openResponse(!responseOpen))} aria-label="Ver respuesta" aria-expanded={showResponse} title="Ver respuesta"><MessagesSquare size={20}/><span>Respuesta</span></button>}
           {running && <button className="general-action stop-action" onClick={pick(stopRun)} disabled={latest.status === 'stopping'} aria-label="Detener tarea" title="Detener tarea"><Square size={18}/><span>Detener</span></button>}
         </div>}
       </div>;
@@ -255,6 +264,8 @@ export default function General() {
       <div className="general-status" data-kind={status.kind} role="status" aria-live="polite" aria-atomic="true">
         <span className="presence-dot" aria-hidden="true"/><span className="general-state-label">{status.title}</span>
       </div>
+      {fresh && reply && !showResponse && !busy && <button className="general-reveal" onClick={() => openResponse()} aria-label="Ver texto" title="Ver el texto de la respuesta">
+        <MessageSquareText size={14} strokeWidth={1.7}/>Ver texto</button>}
       {(voice.phase === 'listening' || voice.phase === 'transcribing') && <div className="live-transcript">
         <p>{voice.interim || (voice.phase === 'listening' ? (voice.engine === 'browser' ? 'Transcripción en vivo' : 'Voz local · termina al hacer una pausa') : '')}</p>
       </div>}

@@ -48,7 +48,10 @@ async function checkLayout(page, name, width, height) {
       console.log(`Checking general agent at ${width}px`);
       const mobile = width < 1024;
       const context = await browser.newContext({viewport: {width, height}, serviceWorkers: 'block', permissions: ['microphone'], locale: 'es-MX', hasTouch: mobile, isMobile: mobile});
-      await context.addInitScript(() => { window.SpeechRecognition = undefined; window.webkitSpeechRecognition = undefined; });
+      await context.addInitScript(() => {
+        window.SpeechRecognition = undefined; window.webkitSpeechRecognition = undefined; window.spoken = [];
+        Object.defineProperty(window, 'speechSynthesis', {value: {speaking: false, cancel() {}, speak(utterance) { if (utterance.text) window.spoken.push(utterance.text); setTimeout(() => utterance.onend?.(), 20); }}});
+      });
       const page = await context.newPage();
       const errors = [], posts = [];
       let rejectSend = false;
@@ -135,7 +138,18 @@ async function checkLayout(page, name, width, height) {
       assert(sent && sent.project === '_general' && sent.provider === 'codex' && sent.chat_id === 'main' && sent.text === '¿Cómo está el servidor?', 'Mensaje mal enviado');
       await label.filter({hasText: 'Pensando'}).waitFor({timeout: 8000});
       agent = {...agent, rev: 'sent-done', working: [], runs: [...agent.runs.slice(0, -1), {...agent.runs.at(-1), status: 'done', result: {text: 'Respuesta nueva a tu solicitud.'}}]};
-      await page.locator('.general-response', {hasText: 'Respuesta nueva a tu solicitud.'}).waitFor({timeout: 8000});
+      // La respuesta se escucha; el texto queda oculto hasta pulsar «Ver texto».
+      const reveal = page.getByRole('button', {name: 'Ver texto', exact: true});
+      await reveal.waitFor({timeout: 8000});
+      assert(await page.locator('.general-response').count() === 0, 'La respuesta se abrió sin pedirla');
+      await page.waitForFunction(() => window.spoken.some(text => text.includes('Respuesta nueva a tu solicitud')));
+      await label.filter({hasText: 'Disponible'}).waitFor();
+      const revealBox = await reveal.boundingBox(), limit = await page.evaluate(() => (document.querySelector('.bottom-nav')?.getClientRects().length ? document.querySelector('.bottom-nav') : document.querySelector('.dock-toggle')).getBoundingClientRect().top);
+      assert(revealBox.y + revealBox.height <= limit + 1 && revealBox.x >= 0 && revealBox.x + revealBox.width <= width + 1, `«Ver texto» fuera de sitio: ${JSON.stringify(revealBox)}`);
+      await page.screenshot({path: `${out}/answered-${width}x${height}.png`});
+      await reveal.click();
+      await page.locator('.general-response', {hasText: 'Respuesta nueva a tu solicitud.'}).waitFor();
+      assert(await reveal.count() === 0, '«Ver texto» sigue visible con la respuesta abierta');
       await page.getByRole('button', {name: 'Ocultar respuesta', exact: true}).click();
 
       // Un fallo conserva el borrador y permite reintentar.

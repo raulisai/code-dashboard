@@ -35,9 +35,9 @@ export default function Quota({detail = false}) {
   const {quota, busy, refresh} = useQuota(), now = useNow(30000);
   const suggestion = best(quota);
   return <div className="quota">
-    <div className="quota-grid">{quota ? ['claude', 'codex'].map(name => <Provider key={name} name={name} data={quota[name]} now={now}/>) : <p className="muted"><Spinner size={14}/> Consultando cupo…</p>}</div>
+    <div className="quota-grid">{quota ? ['claude', 'codex'].map(name => <Provider key={name} name={name} data={quota[name] || {state: 'error', windows: []}} now={now}/>) : <p className="muted"><Spinner size={14}/> Consultando cupo…</p>}</div>
     <div className="quota-foot">
-      <small className="muted">{quota?.stale ? 'No se pudo actualizar; mostrando la última lectura. ' : ''}{suggestion && quota.claude.state === 'ok' && quota.codex.state === 'ok' ? `Ahora conviene ${providerLabel(suggestion)}. ` : ''}{detail ? 'Se lee en el servidor con la sesión de cada CLI.' : ''}</small>
+      <small className="muted">{quota?.stale ? 'No se pudo actualizar; mostrando la última lectura. ' : ''}{suggestion && quota.claude?.state === 'ok' && quota.codex?.state === 'ok' ? `Ahora conviene ${providerLabel(suggestion)}. ` : ''}{detail ? 'Se lee en el servidor con la sesión de cada CLI.' : ''}</small>
       <button className="btn small" onClick={refresh} disabled={busy} aria-label="Actualizar cupo">{busy ? <Spinner size={13}/> : <RefreshCw size={14}/>}Actualizar</button>
     </div>
   </div>;
