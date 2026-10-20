@@ -8,13 +8,11 @@
 
 ## 0. Estado en una línea
 
-**Subida a GitHub solicitada (20 octubre, Codex): preparación completada; falta destino.**
-La llave SSH autentica como `raulisai`, pero `raulisai/codex-dashboard` todavía no
-existe o no es accesible. El panel no tiene token GitHub conectado, tampoco hay
-`gh` ni credencial GitHub en el entorno. Se pidió crear el repo privado vacío o
-conectar GitHub en Ajustes. Rama local `main`, sin remoto. Revisados 329 blobs del
-historial: sin patrones de claves privadas/tokens detectados, sin archivos >50 MB
-ni archivos privados de configuración versionados. No se ha subido nada todavía.
+**Proyecto subido a GitHub (20 octubre, Codex):** repositorio público indicado por
+el usuario: https://github.com/raulisai/code-dashboard. Rama `main` publicada con
+historial completo y seguimiento `origin/main`. `origin` usa HTTPS para lectura y
+SSH para push con la llave existente de `raulisai`. Configuración privada, `.env`,
+dependencias y artefactos permanecen fuera de Git. No se modificó la app desplegada.
 
 
 **Agente general: interfaz viva y más animaciones (18 octubre, Claude). Publicado.**
@@ -307,15 +305,14 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
 
 ## 4. Pendientes y límites de validación
 
-### Subir codex-dashboard a GitHub (20 octubre)
+### GitHub publicado (20 octubre)
 
-- Pendiente que exista un repo privado vacío accesible por SSH, preferentemente
-  `raulisai/codex-dashboard`, o que el usuario conecte GitHub en Ajustes para crearlo.
-- Ya está autorizada la creación/subida por la petición del usuario. No pedir otra
-  confirmación: comprobar destino, añadir `origin`, subir `main` sin force y verificar
-  que el SHA remoto coincide. Conservar todo el historial local.
-- El escaneo por patrones no garantiza ausencia absoluta de secretos; no encontró
-  claves privadas ni tokens conocidos en los 329 blobs históricos revisados.
+- Destino autorizado por el usuario: repo público `raulisai/code-dashboard`.
+- La publicación inicial ya está hecha: `main` con historial completo, sin force.
+- Para trabajar desde otra computadora: `git clone https://github.com/raulisai/code-dashboard.git`.
+- Cambios futuros requieren commit y push; la publicación web sigue siendo un
+  despliegue independiente. El token de GitHub del panel continúa desconectado;
+  el push desde este VPS funciona mediante la llave SSH existente.
 
 
 ### Interfaz viva y más animaciones (18 octubre)
@@ -706,6 +703,14 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Publicación en GitHub (20 octubre, Codex)
+
+- Repo vacío comprobado antes de subir, usando acceso SSH de `raulisai`.
+- Añadido `origin` HTTPS como pidió el usuario y URL de push SSH para aprovechar
+  la autenticación existente sin guardar tokens.
+- `git push -u origin main` completado correctamente; historial conservado.
+- Sin cambios de código de aplicación ni reconstrucción de contenedores.
 
 ### Preparación para GitHub (20 octubre, Codex)
 
