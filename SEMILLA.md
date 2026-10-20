@@ -1,5 +1,7 @@
 # SEMILLA — estado del trabajo en codex-dashboard
 
+Actualización: 20 de octubre de 2026, America/Mexico_City. Codex: MVP nativo de Wear OS centrado en el agente general, implementación y pruebas locales; publicación del backend y Firebase pendientes por decisión del usuario.
+
 > Leer antes de trabajar. Actualizar las secciones 0, 4 y 5 al terminar.
 
 Última actualización anterior: 2026-10-18, Europe/Berlin. Autor: Claude (agente general: respuestas breves por voz y texto solo bajo demanda).
@@ -7,6 +9,15 @@
 Última actualización: 2026-10-18, 08:50 Europe/Berlin. Autor: Claude (agente general: interfaz viva y más animaciones).
 
 ## 0. Estado en una línea
+
+**Wear OS / Galaxy Watch 7: MVP implementado localmente en `codex/wear-general-agent` (20 octubre, Codex).**
+Cliente Kotlin/Compose en `wear/`, con una sola entrada al mismo agente `_general/main`:
+esfera, dictado del sistema con revisión, texto, respuestas breves y accesos para preguntar
+por la última tarea o los proyectos. Vinculación web con MFA, sesión revocable y limitada a
+la API del reloj, borrador/caché cifrados e idempotencia de envíos. FCM directo opcional;
+avisos inicialmente solo de atención. **No se desplegó en el VPS ni se instaló en el reloj
+físico.** El usuario pidió dejar la configuración documentada y probar primero en un
+emulador de este equipo. Guía: `wear/README.md`; plantilla: `deploy/firebase-watch-client.example.json`.
 
 **Proyecto subido a GitHub (20 octubre, Codex):** repositorio público indicado por
 el usuario: https://github.com/raulisai/code-dashboard. Rama `main` publicada con
@@ -304,6 +315,30 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Wear OS — activación pendiente por el usuario (20 octubre)
+
+- Publicar el backend de esta rama antes de vincular el APK. Desde esta copia Windows
+  no hay acceso SSH preparado al VPS; el usuario pidió documentación, sin proporcionar
+  credenciales. No cambiar `rootai`, no sustituir TOTP y no alterar el proveedor por defecto.
+  Antes del despliegue ejecutar el respaldo autorizado y conservar código pendiente e imagen.
+- Firebase todavía no existe para esta app. Configurar en el VPS, con permisos `0600`,
+  `/home/dv1/.config/codex-automation/wear-firebase-client.json` y
+  `wear-firebase-service-account.json`. El primero contiene las cuatro opciones públicas;
+  el segundo es privado y nunca se versiona ni se entrega al reloj. Variable opcional:
+  `WEAR_FCM_CREDENTIALS=/config/wear-firebase-service-account.json`. Ver guía para los detalles.
+- La conversación funciona sin Firebase una vez publicado el backend. No presentar los
+  avisos directos como activados ni la recepción FCM como comprobada.
+- Emulador local creado: Wear OS 6 / API 36, x86_64, circular 432×432, densidad 320,
+  serial `emulator-5580`. AVD e imagen temporal bajo `artifacts/wear-avd` y
+  `artifacts/wear-tooling`. No purgarlos si se quiere conservar este emulador.
+- Pendiente tras publicar: vinculación con el usuario real, turno real del modelo desde el
+  reloj, recepción FCM, dictado del sistema y medición de batería en el Watch 7 físico.
+  Las pruebas de interfaz usan transporte simulado y no gastan cuota ni ejecutan proyectos.
+- Windows bloqueó varios ejecutables y AAPT2 al escribir ZIP mapeados en F:. Se verificó
+  compilar con Java de Android Studio, AAPT2 de Build Tools 36.0.0 y salida en C:/TEMP.
+  `tools/build_wear.cmd` aplica este aislamiento; `tools/verify_wear_android.cmd` exige
+  un serial de emulador y comprueba el resultado de instrumentación.
 
 ### GitHub publicado (20 octubre)
 
@@ -703,6 +738,39 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Wear OS — agente general primero (20 octubre, Codex)
+
+- `cm/wear.py` y rutas `/api/wear/*`: vinculación con secreto de 256 bits y código de
+  ocho caracteres, caducidad de cinco minutos, aprobación web con MFA/Origin, sesión
+  revocable independiente y alcance limitado a estado/envío/avisos/desvinculación. El token
+  tampoco permite entrar a las otras API como cookie. Entrega inicial recuperable ante
+  una respuesta perdida y cerrada al primer uso autenticado. Tablas SQLite aditivas.
+- Comparte `_general/main`, cola y elección de proveedor existente. `origin=wear` añade
+  instrucciones de conversación breve y estado reciente real al prompt, sin reiniciar el
+  hilo. IDs deterministas de tarea evitan duplicados incluso tras cortes entre guardar y
+  responder. No modifica el agente predeterminado ni expone controles de modelos en el reloj.
+- Cliente nativo con Android Keystore, HTTPS validado, borrador persistente y reintentos
+  explícitos. Sin sockets permanentes ni sondeo de red en reposo; consulta cada seis segundos
+  solo cuando hay trabajo y la actividad está RESUMED. Animación de 72 puntos a 20 fps solo
+  al trabajar, detenida fuera de pantalla; respeta escala de animación y tamaño de texto.
+- Avisos FCM HTTP v1 con cuenta de servicio privada y opciones de app obtenidas del backend;
+  sin secretos incorporados al APK. Solo títulos genéricos, filtro de atención inicial,
+  agrupación, deduplicación, espera tras fallos y retirada de tokens UNREGISTERED. La
+  conversación no depende del SDK de notificaciones ni de una app propia en el teléfono.
+- Web: `WatchPair.jsx` en Ajustes y `/watch`. `frontend/package-lock.json` completado con
+  plataformas opcionales ausentes para permitir npm ci actual; ninguna versión existente
+  cambió. Frontend: **24 pruebas Node y build Vite correctos** en un entorno Linux aislado
+  dentro del emulador. No se modificó el frontend desplegado.
+- Backend: **74 pruebas aprobadas** (`test_wear`, `test_general`, `test_auth_security`,
+  `test_http`, `test_push`, `test_chats`, `test_availability`) con Python 3.12.7 y las
+  dependencias exactas del proyecto en el entorno aislado del emulador. Evidencia:
+  `artifacts/wear-validation/backend-tests.log`. No es la suite completa de Docker/tmux/Git.
+- Android final: **build correcto, 1 prueba JVM y 5 pruebas de interfaz aprobadas**, estas
+  últimas repetidas también con fuente al 130 %; lint con **0 errores** y dos avisos de
+  versiones nuevas disponibles. APK: `artifacts/wear-validation/codex-watch-mvp-0.1.0.apk`.
+  Evidencias de compilación e instrumentación y capturas bajo `artifacts/wear-validation/`. Las
+  capturas de conversación son fixtures de UI, no respuestas reales de un modelo.
 
 ### Publicación en GitHub (20 octubre, Codex)
 

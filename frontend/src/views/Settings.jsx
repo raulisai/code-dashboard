@@ -7,6 +7,7 @@ import {currentPush, disablePush, enablePush, pushSupported} from '../push.js';
 import {ProjectTrash} from '../ProjectDelete.jsx';
 import {SecuritySettings} from '../Security.jsx';
 import Quota from '../Quota.jsx';
+import WatchPair from '../WatchPair.jsx';
 
 const CLAUDE_MODES = {
   ask: ['Aprobar desde la web', 'Edita archivos del proyecto sin preguntar; comandos, despliegues y accesos web te los pide aquí con Permitir / Denegar.'],
@@ -57,6 +58,7 @@ export default function Settings({onLogout}) {
   return <div className="page-pad settings">
     <header className="page-title"><div><div className="eyebrow">PREFERENCIAS</div><h1>Ajustes</h1></div></header>
     <SecuritySettings/>
+    <WatchPair/>
     <section className="block"><div className="block-head"><h2><Gauge size={18}/>Cupo de Claude y Codex</h2></div><Quota detail/></section>
     <GitHubSettings/>
     <ProjectTrash/>

@@ -11,6 +11,7 @@ import Queue from './views/Queue.jsx';
 import Server from './views/Server.jsx';
 import Settings from './views/Settings.jsx';
 import {AuthenticatorSetup} from './Security.jsx';
+import WatchPair from './WatchPair.jsx';
 
 const Workspace = lazy(() => import('./views/Workspace.jsx'));
 const General = lazy(() => import('./views/General.jsx'));
@@ -74,7 +75,8 @@ export default function App() {
     {workspace
       ? <Suspense fallback={<div className="boot"><Spinner size={22}/> Abriendo el proyecto…</div>}><Workspace key={workspace[1]} name={workspace[1]}/></Suspense>
       : <Shell path={path}>
-          {path === '/agent' ? <Suspense fallback={<div className="boot"><Spinner size={22}/> Despertando al agente…</div>}><General/></Suspense> : path === '/projects' ? <Projects/> : path === '/new' ? <Create/> : path === '/queue' ? <Queue/> : path === '/server' ? <Server/> : path === '/settings' ? <Settings onLogout={() => window.dispatchEvent(new Event('cm:unauthorized'))}/> : <Home/>}
+          {path === '/watch' ? <div className="page-pad"><WatchPair/></div> :
+          path === '/agent' ? <Suspense fallback={<div className="boot"><Spinner size={22}/> Despertando al agente…</div>}><General/></Suspense> : path === '/projects' ? <Projects/> : path === '/new' ? <Create/> : path === '/queue' ? <Queue/> : path === '/server' ? <Server/> : path === '/settings' ? <Settings onLogout={() => window.dispatchEvent(new Event('cm:unauthorized'))}/> : <Home/>}
         </Shell>}
     <Toaster/>
   </AppContext.Provider>;

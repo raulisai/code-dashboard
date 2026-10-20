@@ -1,5 +1,7 @@
 # Codex Manager
 
+Cliente nativo para Galaxy Watch / Wear OS: [guía del MVP del agente general](wear/README.md).
+
 Entorno de desarrollo del VPS, disponible en https://codex-dashboard.devdj.lat.
 Permite crear proyectos, trabajar con Claude Code o Codex, editar archivos,
 usar una terminal, revisar Git y logs, y desplegar desde el celular.

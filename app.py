@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from aiohttp import web, WSMsgType
 
-from cm import auth, chats, config, dockerapi, files, gitops, lifecycle, media, projects, push, quota, repos, runs, speech, tasks, tmux, websecurity, terminal as terminalio
+from cm import auth, chats, config, dockerapi, files, gitops, lifecycle, media, projects, push, quota, repos, runs, speech, tasks, tmux, wear, websecurity, terminal as terminalio
 
 EXECUTOR = ThreadPoolExecutor(max_workers=16, thread_name_prefix='cm-io')
 PUBLIC_API = {'/api/login', '/api/login/mfa', '/api/logout'}
@@ -59,11 +59,21 @@ async def security(request, handler):
         if path.startswith('/api/'):
             if request.method not in ('GET', 'HEAD', 'OPTIONS') or path == '/api/term':
                 if not same_origin(request): return fail('Origen no permitido', 403)
-            if path not in PUBLIC_API:
+            authorization = request.headers.get('Authorization', '')
+            if authorization.startswith('Bearer ') and path not in wear.NATIVE_PATHS:
+                return fail('La credencial del reloj solo permite usar el agente general', 403)
+            if path in wear.NATIVE_PATHS:
+                token = authorization.removeprefix('Bearer ') if authorization.startswith('Bearer ') else ''
+                session = await blocking(wear.authenticate, token)
+                if not session: return fail('Vuelve a vincular el reloj desde la web', 401)
+                request[websecurity.SESSION_KEY] = session
+            elif path not in PUBLIC_API and path not in wear.PUBLIC_PATHS:
                 session = await blocking(auth.authenticate, request.cookies.get(auth.COOKIE), path != '/api/term')
                 if not session:
                     return fail('Sesión expirada: inicia sesión de nuevo', 401)
                 request[websecurity.SESSION_KEY] = session
+                if await blocking(wear.is_device, session['id']):
+                    return fail('La sesión del reloj no permite acceder a esta API', 403)
                 if not session['mfa'] and path not in SETUP_API:
                     return reply({'message': 'Configura tu autenticador para continuar', 'setup_required': True}, 403)
         response = await handler(request)
@@ -93,7 +103,7 @@ def project_param(value):
 async def body(request):
     if request.content_type != 'application/json':
         raise web.HTTPUnsupportedMediaType(reason='Se requiere JSON')
-    limit = 4096 if request.path.startswith(('/api/login', '/api/security')) else 6 * 1024 * 1024
+    limit = 16384 if request.path.startswith('/api/wear/') else 4096 if request.path.startswith(('/api/login', '/api/security')) else 6 * 1024 * 1024
     if request.content_length and request.content_length > limit:
         raise web.HTTPRequestEntityTooLarge(max_size=limit, actual_size=request.content_length)
     raw = bytearray()
@@ -193,6 +203,40 @@ async def push_post(request):
 
 
 # ---------------------------------------------------------------- agente
+
+async def wear_start(request):
+    data = await body(request)
+    return reply(await blocking(wear.start_pair, client_ip(request), data.get('label', 'Galaxy Watch')))
+
+
+async def wear_poll(request):
+    data = await body(request)
+    return reply(await blocking(wear.poll_pair, data.get('secret')))
+
+
+async def wear_approve(request):
+    data = await body(request)
+    return reply(await blocking(wear.approve_pair, data.get('code')))
+
+
+async def wear_state(request):
+    return reply(await blocking(wear.snapshot, request[websecurity.SESSION_KEY]['id']))
+
+
+async def wear_send(request):
+    data = await body(request)
+    return reply(await blocking(wear.send, request[websecurity.SESSION_KEY]['id'], data.get('request_id'), data.get('text')), 201)
+
+
+async def wear_notifications(request):
+    data = await body(request)
+    return reply(await blocking(wear.preferences, request[websecurity.SESSION_KEY]['id'], data.get('mode'), data.get('token', '')))
+
+
+async def wear_disconnect(request):
+    sid = request[websecurity.SESSION_KEY]['id']
+    await blocking(auth.revoke_sessions, sid, sid)
+    return reply({'ok': True})
 
 def add_task(project, provider, title, details, priority='media', origin='task', chat_id='main', model='', effort=''):
     task = tasks.new_task(project, provider, title, details, priority, origin, chat_id, model, effort)
@@ -738,6 +782,10 @@ def make_app():
         web.post('/api/security/revoke', security_revoke),
         web.get('/api/state', state), web.get('/api/settings', settings_get), web.post('/api/settings', settings_post),
         web.get('/api/push', push_get), web.post('/api/push', push_post),
+        web.post('/api/wear/pair/start', wear_start), web.post('/api/wear/pair/poll', wear_poll),
+        web.post('/api/wear/pair/approve', wear_approve), web.get('/api/wear/state', wear_state),
+        web.post('/api/wear/send', wear_send), web.post('/api/wear/notifications', wear_notifications),
+        web.post('/api/wear/disconnect', wear_disconnect),
         web.get('/api/voice', speech.status), web.post('/api/voice/transcribe', speech.recognize),
         web.get('/api/models', models_get), web.get('/api/agent', agent_get), web.post('/api/agent/send', agent_send), web.post('/api/agent/reset', agent_reset),
         web.get('/api/agent/chats', chats_get), web.post('/api/agent/chats', chats_post),
@@ -766,6 +814,7 @@ def main():
     media.prepare()
     threading.Thread(target=runs.scheduler_loop, name='agent-scheduler', daemon=True).start()
     threading.Thread(target=push.worker, name='push-notifications', daemon=True).start()
+    threading.Thread(target=wear.worker, name='wear-notifications', daemon=True).start()
     runs.WAKE.set()
     web.run_app(make_app(), host='0.0.0.0', port=int(os.environ.get('PORT', '3000')), access_log=None, print=None)
 

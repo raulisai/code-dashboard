@@ -3,3 +3,10 @@ __pycache__/
 frontend/node_modules/
 frontend/dist/
 artifacts/
+wear/.gradle/
+wear/.kotlin/
+wear/**/build/
+wear/local.properties
+wear/*.jks
+wear/google-services.json
+wear-firebase-*.json

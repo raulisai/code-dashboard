@@ -79,7 +79,7 @@ def new_task(project, provider, title, details='', priority='media', origin='tas
 def task_prompt(task):
     """Texto que recibe el agente. Un mensaje de chat va tal cual; una petición de la
     cola lleva el título como instrucción y los detalles como contexto."""
-    if task.get('origin') in ('chat', 'create') and task.get('details'):
+    if task.get('origin') in ('chat', 'wear', 'create') and task.get('details'):
         return task['details']
     details = str(task.get('details') or '').strip()
     return f"{task['title']}\n\n{details}" if details else task['title']
