@@ -8,6 +8,15 @@
 
 ## 0. Estado en una línea
 
+**Subida a GitHub solicitada (20 octubre, Codex): preparación completada; falta destino.**
+La llave SSH autentica como `raulisai`, pero `raulisai/codex-dashboard` todavía no
+existe o no es accesible. El panel no tiene token GitHub conectado, tampoco hay
+`gh` ni credencial GitHub en el entorno. Se pidió crear el repo privado vacío o
+conectar GitHub en Ajustes. Rama local `main`, sin remoto. Revisados 329 blobs del
+historial: sin patrones de claves privadas/tokens detectados, sin archivos >50 MB
+ni archivos privados de configuración versionados. No se ha subido nada todavía.
+
+
 **Agente general: interfaz viva y más animaciones (18 octubre, Claude). Publicado.**
 La esfera tiene 21 formas con color y animación propios según la acción real: escribir código →
 líneas con cursor que teclea; terminal → «>_» que escribe y suben líneas de salida; base de datos
@@ -297,6 +306,17 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Subir codex-dashboard a GitHub (20 octubre)
+
+- Pendiente que exista un repo privado vacío accesible por SSH, preferentemente
+  `raulisai/codex-dashboard`, o que el usuario conecte GitHub en Ajustes para crearlo.
+- Ya está autorizada la creación/subida por la petición del usuario. No pedir otra
+  confirmación: comprobar destino, añadir `origin`, subir `main` sin force y verificar
+  que el SHA remoto coincide. Conservar todo el historial local.
+- El escaneo por patrones no garantiza ausencia absoluta de secretos; no encontró
+  claves privadas ni tokens conocidos en los 329 blobs históricos revisados.
+
 
 ### Interfaz viva y más animaciones (18 octubre)
 
@@ -686,6 +706,19 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Preparación para GitHub (20 octubre, Codex)
+
+- `ssh -T git@github.com`: identidad `raulisai` autenticada correctamente.
+- `git ls-remote git@github.com:raulisai/codex-dashboard.git`: repo no encontrado.
+- Estado privado del panel consultado sin mostrar secretos: GitHub desconectado.
+- Árbol de trabajo inicialmente limpio, rama `main`, 148 archivos versionados,
+  sin remotos; historial analizado (329 blobs), sin patrones de credenciales hallados
+  ni archivos grandes. `.env` y dependencias/artefactos ya están ignorados.
+- Respaldo completo antes de preparar la subida:
+  `/srv/platform/backups/codex-dashboard-auto/20261020T200050.432786Z/`.
+- No hubo cambios de aplicación ni despliegue; publicación GitHub aún pendiente.
+
 
 ### Interfaz viva y más animaciones (Claude, 18 octubre)
 
