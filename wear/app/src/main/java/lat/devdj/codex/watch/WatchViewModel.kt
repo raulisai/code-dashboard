@@ -42,8 +42,17 @@ class WatchViewModel @JvmOverloads constructor(application: Application, injecte
         draft = store.read("draft"), pending = store.read("request_id").isNotBlank(), origin = api.origin,
         code = store.read("pair_code"), expires = store.read("pair_expires").toLongOrNull() ?: 0))
     val ui = mutable.asStateFlow()
+    suspend fun dashboardCall(path: String, body: JSONObject? = null): JSONObject {
+        try { return api.call(path, body) }
+        catch (error: Exception) {
+            if (error is ApiError && error.status == 401) failure(error)
+            throw error
+        }
+    }
     private val network = Mutex()
     private var draftJob: Job? = null
+    private var generalVisible = false
+    fun generalVisible(value: Boolean) { generalVisible = value }
     init { if (mutable.value.linked) store.json("snapshot")?.let { applySnapshot(it) } }
     private fun change(update: (WatchUi) -> WatchUi) { mutable.value = update(mutable.value) }
     private fun failure(error: Exception) {
@@ -87,7 +96,7 @@ class WatchViewModel @JvmOverloads constructor(application: Application, injecte
                     network.withLock { pollPair() }
                     if (ui.value.linked) refresh()
                 }
-            } else if (ui.value.working) {
+            } else if (ui.value.working && generalVisible) {
                 if (ui.value.error.isNotBlank()) failures++ else failures = 0
                 if (failures < 3) refresh()
             }

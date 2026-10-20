@@ -15,6 +15,7 @@ EXECUTOR = ThreadPoolExecutor(max_workers=16, thread_name_prefix='cm-io')
 PUBLIC_API = {'/api/login', '/api/login/mfa', '/api/logout'}
 SETUP_API = {'/api/me', '/api/security', '/api/security/setup', '/api/security/confirm'}
 PRIORITIES = ('alta', 'media', 'baja')
+WEAR_ACTION_BODY = web.RequestKey('wear_action_body', dict)
 runs.on_change(projects.invalidate)
 dockerapi.on_change(projects.invalidate)
 
@@ -61,7 +62,7 @@ async def security(request, handler):
                 if not same_origin(request): return fail('Origen no permitido', 403)
             authorization = request.headers.get('Authorization', '')
             if authorization.startswith('Bearer ') and path not in wear.NATIVE_PATHS:
-                return fail('La credencial del reloj solo permite usar el agente general', 403)
+                return fail('La credencial del reloj solo permite usar la API del reloj', 403)
             if path in wear.NATIVE_PATHS:
                 token = authorization.removeprefix('Bearer ') if authorization.startswith('Bearer ') else ''
                 session = await blocking(wear.authenticate, token)
@@ -101,6 +102,7 @@ def project_param(value):
 
 
 async def body(request):
+    if WEAR_ACTION_BODY in request: return request[WEAR_ACTION_BODY]
     if request.content_type != 'application/json':
         raise web.HTTPUnsupportedMediaType(reason='Se requiere JSON')
     limit = 16384 if request.path.startswith('/api/wear/') else 4096 if request.path.startswith(('/api/login', '/api/security')) else 6 * 1024 * 1024
@@ -225,7 +227,8 @@ async def wear_state(request):
 
 async def wear_send(request):
     data = await body(request)
-    return reply(await blocking(wear.send, request[websecurity.SESSION_KEY]['id'], data.get('request_id'), data.get('text')), 201)
+    return reply(await blocking(wear.send, request[websecurity.SESSION_KEY]['id'], data.get('request_id'), data.get('text'),
+                               data.get('project', config.GENERAL), data.get('chat_id', 'main'), data.get('provider', ''), data.get('model', ''), data.get('effort', '')), 201)
 
 
 async def wear_notifications(request):
@@ -237,6 +240,115 @@ async def wear_disconnect(request):
     sid = request[websecurity.SESSION_KEY]['id']
     await blocking(auth.revoke_sessions, sid, sid)
     return reply({'ok': True})
+
+
+def wear_bounded(value):
+    """Bound both payload bytes and individual previews for the small native client."""
+    if isinstance(value, str): return value[:10000] + ('\n… Vista recortada' if len(value) > 10000 else '')
+    if isinstance(value, list): return [wear_bounded(row) for row in value[:100]]
+    if isinstance(value, dict): return {key: wear_bounded(row) for key, row in value.items()}
+    return value
+
+
+def wear_reply(value):
+    data = wear_bounded(value)
+    if len(json.dumps(data).encode()) > 110000:
+        return fail('Demasiados datos. Abre una vista más específica.', 413)
+    return reply(data)
+
+
+async def wear_view(request):
+    view = request.query.get('view', 'home')
+    if view in ('home', 'projects', 'project', 'containers', 'preview', 'tasks', 'server', 'approvals'):
+        data = await blocking(projects.snapshot)
+        if view == 'home':
+            return wear_reply({'working': [wear.compact_task(t) for t in data['task_records'] if t['status'] == 'working'],
+                          'queued': sum(t['status'] == 'espera' for t in data['task_records']),
+                          'projects': len(data['projects']), 'updated_at': int(time.time())})
+        if view == 'projects':
+            rows = [{key: row.get(key) for key in ('name', 'description', 'running_containers', 'queued')} for row in data['projects']]
+            offset = max(0, query_int(request, 'offset', 0))
+            return wear_reply({'projects': rows[offset:offset + 100], 'next': offset + 100 if offset + 100 < len(rows) else None, 'updated_at': int(time.time())})
+        if view == 'server': return wear_reply({key: data[key] for key in ('cpu', 'memory', 'disk', 'docker_ok', 'tmux_ok')})
+        if view == 'approvals': return wear_reply({'approvals': data['approvals']})
+        project = project_param(request.query.get('project'))
+        if view in ('project', 'containers', 'preview'): return wear_reply(next(row for row in data['projects'] if row['name'] == project))
+        return reply({'tasks': [wear.compact_task(t) for t in reversed(data['task_records']) if t['project'] == project][:100]})
+    if view == 'agent':
+        project = agent_project(request.query.get('project'))
+        try: chat_id = await blocking(chats.require, project, request.query.get('chat_id', 'main'))
+        except ValueError as error: return fail(str(error), 404)
+        conversation = await blocking(runs.conversation, project, full_runs=3, chat_id=chat_id)
+        records = await blocking(tasks.task_records)
+        for row in conversation:
+            row['prompt'] = str(row.get('prompt') or '')[:1500]
+            if isinstance(row.get('result'), dict): row['result'] = {'text': str(row['result'].get('text') or '')[:4000]}
+            row['events'] = [{key: str(event.get(key, ''))[:600] for key in ('t', 'name', 'text', 'command')} for event in row.get('events', [])[-12:]]
+        return wear_reply({'runs': conversation[-3:], 'tasks': [wear.compact_task(t) for t in records if t['project'] == project and t.get('chat_id', 'main') == chat_id][-8:]})
+    if view == 'run':
+        project = agent_project(request.query.get('project'))
+        meta = await blocking(runs.run_meta, request.query.get('run_id', ''))
+        if not meta or meta['project'] != project: return fail('Ejecución no encontrada en este proyecto', 404)
+        data = await blocking(runs.describe_run, meta)
+        data['events'] = [json.dumps(event, ensure_ascii=False)[:1000] for event in data.get('events', [])[-40:]]
+        data['stderr'] = await blocking(runs.stderr_tail, meta['id'], 10000)
+        return wear_reply(data)
+    if view == 'terminal':
+        project = project_param(request.query.get('project'))
+        kind = request.query.get('kind', 'shell')
+        if kind not in ('shell', 'claude', 'codex'): return fail('Terminal inválida')
+        name = {'shell': project + '-shell', 'claude': project + '-claude', 'codex': project}[kind]
+        state = await blocking(tmux.pane_state, name)
+        output = ''
+        if state['exists']:
+            code, output, _ = await blocking(tmux.tmux, 'capture-pane', '-p', '-J', '-t', f'={name}:', '-S', '-100')
+            if code: return fail('No se pudo leer la terminal', 503)
+        return reply({'session': name, **state, 'output': output[-12000:], 'updated_at': int(time.time())})
+    handlers = {'quota': quota_get, 'settings': settings_get, 'chats': chats_get, 'models': models_get,
+                'logs': logs_get, 'jobs': jobs_get, 'files': files_list, 'file': files_read,
+                'git': git_get, 'history': git_log, 'branches': git_branches, 'diff': git_diff,
+                'commit': git_commit, 'trash': project_trash, 'delete-preview': project_delete_preview}
+    handler = handlers.get(view)
+    if not handler: return fail('Vista del reloj no disponible', 404)
+    response = await handler(request)
+    if response.status != 200: return response
+    data = json.loads(response.body)
+    # Files are browsed in pages, never silently lose directory entries.
+    if view == 'files':
+        offset = max(0, query_int(request, 'offset', 0))
+        rows = data['entries']; data['entries'] = rows[offset:offset + 40]
+        data['next'] = offset + 40 if offset + 40 < len(rows) else None
+    return wear_reply(data)
+
+
+async def wear_action(request):
+    data = await body(request)
+    if data.get('confirmed') is not True: return fail('Revisa y confirma la acción en el reloj')
+    tool = data.get('tool')
+    request[WEAR_ACTION_BODY] = data
+    # Reuse dashboard validation, conflict detection, versioning and self-protection.
+    handlers = {'chats': chats_post, 'reset': agent_reset, 'tasks': tasks_post, 'approval': approval_post,
+                'docker': docker_post, 'jobs': jobs_post, 'git': git_post, 'files': files_op,
+                'write': files_write, 'projects': projects_post, 'settings': settings_post, 'rules': rules_post}
+    if tool == 'terminal':
+        project = project_param(data.get('project'))
+        kind = data.get('kind', 'shell')
+        if kind not in ('shell', 'claude', 'codex'): return fail('Terminal inválida')
+        if data.get('action') == 'close':
+            name = {'shell': project + '-shell', 'claude': project + '-claude', 'codex': project}[kind]
+            ok = await blocking(tmux.kill_session, name)
+            return reply({'message': 'Terminal cerrada' if ok else 'No se pudo cerrar'}, 200 if ok else 409)
+        command = data.get('command', '')
+        if not isinstance(command, str) or not command.strip() or len(command) > 2000 or '\x00' in command:
+            return fail('Comando inválido (máximo 2000 caracteres)')
+        name, error = await blocking(terminal_session, project, kind)
+        if error: return fail(error, 503)
+        code, _, _ = await blocking(tmux.tmux, 'send-keys', '-t', f'={name}:', '-l', '--', command)
+        if not code: code, _, _ = await blocking(tmux.tmux, 'send-keys', '-t', f'={name}:', 'Enter')
+        return reply({'message': 'Enviado a la terminal' if not code else 'No se pudo enviar'}, 200 if not code else 503)
+    handler = handlers.get(tool)
+    if not handler: return fail('Acción del reloj no disponible', 404)
+    return await handler(request)
 
 def add_task(project, provider, title, details, priority='media', origin='task', chat_id='main', model='', effort=''):
     task = tasks.new_task(project, provider, title, details, priority, origin, chat_id, model, effort)
@@ -786,6 +898,7 @@ def make_app():
         web.post('/api/wear/pair/approve', wear_approve), web.get('/api/wear/state', wear_state),
         web.post('/api/wear/send', wear_send), web.post('/api/wear/notifications', wear_notifications),
         web.post('/api/wear/disconnect', wear_disconnect),
+        web.get('/api/wear/view', wear_view), web.post('/api/wear/action', wear_action),
         web.get('/api/voice', speech.status), web.post('/api/voice/transcribe', speech.recognize),
         web.get('/api/models', models_get), web.get('/api/agent', agent_get), web.post('/api/agent/send', agent_send), web.post('/api/agent/reset', agent_reset),
         web.get('/api/agent/chats', chats_get), web.post('/api/agent/chats', chats_post),

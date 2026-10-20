@@ -80,13 +80,13 @@ class WatchMessagingService : FirebaseMessagingService() {
         if (store.read("last_event") == marker) return
         if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel("agent", "Agente general", NotificationManager.IMPORTANCE_DEFAULT))
+        manager.createNotificationChannel(NotificationChannel("agent", "Agentes y proyectos", NotificationManager.IMPORTANCE_DEFAULT))
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java)
-            .putExtra("show_reply", true), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            .putExtra("show_dashboard", true), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = android.app.Notification.Builder(this, "agent")
             .setSmallIcon(lat.devdj.codex.watch.R.drawable.ic_orb)
             .setContentTitle(message.data["title"]?.take(90) ?: "Agente general")
-            .setContentText("Toca para abrir la conversación")
+            .setContentText("Toca para abrir el dashboard")
             .setContentIntent(open).setAutoCancel(true).setOnlyAlertOnce(true).setLocalOnly(true)
             .setVisibility(android.app.Notification.VISIBILITY_PRIVATE).build()
         manager.notify(1, notification)

@@ -11,7 +11,7 @@ export default function WatchPair() {
   };
   return <section className="block" aria-label="Vincular reloj">
     <div className="block-head"><h2><Watch size={18}/>Tu reloj</h2></div>
-    <p className="muted">Abre Codex en tu Galaxy Watch y escribe aquí sus ocho caracteres. Vincula únicamente el reloj que tienes delante: podrá pedir trabajo al agente general.</p>
+    <p className="muted">Abre Codex en tu Galaxy Watch y escribe aquí sus ocho caracteres. Vincula únicamente el reloj que tienes delante: podrá consultar y controlar proyectos, agentes, archivos, terminal y despliegues.</p>
     <form onSubmit={submit}>
       <label className="field"><span>Código del reloj</span><input className="input" value={code} onChange={event => setCode(event.target.value.toUpperCase().replace(/[^A-Z2-9]/g, '').slice(0, 8))} maxLength={8} autoComplete="off" autoCapitalize="characters" spellCheck={false} placeholder="ABCD2345"/></label>
       <button className="btn primary" disabled={busy || code.length !== 8}>{busy ? 'Vinculando…' : 'Vincular este reloj'}</button>

@@ -1,6 +1,6 @@
 # SEMILLA — estado del trabajo en codex-dashboard
 
-Actualización: 20 de octubre de 2026, America/Mexico_City. Codex: MVP nativo de Wear OS centrado en el agente general, implementación y pruebas locales; publicación del backend y Firebase pendientes por decisión del usuario.
+Actualización: 20 de octubre de 2026, America/Mexico_City. Codex: Wear OS 0.2 ampliado con Inicio, Proyectos, Configuración y herramientas nativas; backend y Firebase pendientes de activación.
 
 > Leer antes de trabajar. Actualizar las secciones 0, 4 y 5 al terminar.
 
@@ -9,6 +9,16 @@ Actualización: 20 de octubre de 2026, America/Mexico_City. Codex: MVP nativo de
 Última actualización: 2026-10-18, 08:50 Europe/Berlin. Autor: Claude (agente general: interfaz viva y más animaciones).
 
 ## 0. Estado en una línea
+
+**Wear OS 0.2: ampliación local del dashboard (20 octubre, Codex).** Inicio ahora muestra
+cuota Claude y trabajo actual; Proyectos permite explorar y abrir chats/agentes, peticiones,
+logs, terminal, archivos, Git, despliegues y contenedores. Configuración y aprobaciones
+nativas. El agente general conserva esfera, voz y continuidad. Acciones revisadas y
+confirmadas, API específica con las validaciones existentes y mensajes idempotentes por
+proyecto/chat. Esta ampliación sustituye la decisión anterior de mostrar solo el agente
+al entrar. Sigue sin despliegue VPS, Firebase real ni pruebas sobre el Watch 7 físico.
+Ver `wear/README.md` para alcance y límites; la web del proyecto, adjuntos binarios y
+credenciales de cuenta no se trasladan a la interfaz del reloj.
 
 **Wear OS / Galaxy Watch 7: MVP implementado localmente en `codex/wear-general-agent` (20 octubre, Codex).**
 Cliente Kotlin/Compose en `wear/`, con una sola entrada al mismo agente `_general/main`:
@@ -315,6 +325,22 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Wear OS 0.2 — alcance y activación
+
+- Debe desplegarse el backend 0.2 junto con el APK 0.2; el backend anterior no tiene
+  `/api/wear/view` y `/api/wear/action`. La sesión sigue siendo revocable y no abre las
+  rutas web con Bearer ni cookies del reloj. La vinculación web explica el acceso ampliado.
+- El usuario pidió herramientas mayormente de consulta, con control explícito. Terminal
+  es captura + comandos revisados (sin VT/WebSocket permanente). No hay WebView ni web
+  del proyecto renderizada, archivos multimedia/adjuntos binarios ni tarjetas cm-ui.
+  Credenciales GitHub y administración de TOTP/sesiones siguen en la web.
+- Cambios distintos de mensajes de agente no se reintentan automáticamente. Si se pierde
+  su respuesta, comprobar el estado antes de repetir. Los mensajes sí conservan ID y
+  destino exactos en almacenamiento cifrado para reintentar sin duplicados.
+- Pruebas de UI y backend usan datos aislados; aún falta integración contra el VPS,
+  entrega FCM real, dictado del sistema y medición física de autonomía. Se respetó la
+  instrucción de no instalar ni modificar el reloj físico conectado.
 
 ### Wear OS — activación pendiente por el usuario (20 octubre)
 
@@ -738,6 +764,36 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Wear OS 0.2 — dashboard y herramientas (20 octubre, Codex)
+
+- `WatchDashboard.kt`: navegación nativa Inicio/Proyectos/Configuración, búsqueda,
+  chats por proyecto, conversación, cola, logs/actividad de ejecuciones, terminal,
+  archivos paginados, edición con control de versión, Git, jobs, contenedores,
+  creación/importación/eliminación/restauración de proyectos, servidor y aprobaciones.
+- Mantiene el agente general separado y rápido. Dictado revisado en chats de proyecto,
+  borrador y outbox cifrados por proyecto/chat; proveedor, modelo y esfuerzo se congelan
+  junto al mensaje/ID antes del transporte. Backend rechaza reutilizar IDs con otro destino.
+- Rutas de vistas/acciones con lista explícita; reutilizan validación y versionado del
+  dashboard, límite de cuerpo de 16 KB, respuestas acotadas y rechazo de rutas externas.
+  Capturar una terminal no crea sesiones ni ejecuta comandos. Envío literal con tmux,
+  destino derivado del proyecto; nunca conexión libre a sesiones ajenas/internas.
+- Solo la vista visible de agente con trabajo consulta cada 6 s; Inicio activo cada 10 s;
+  herramientas pesadas actualizan bajo demanda. Se pausa fuera de RESUMED. Cuota usa la
+  caché existente de 2 min y se carga por separado. Scroll se reinicia al cambiar de vista,
+  admite entrada giratoria y conserva objetivos táctiles de 48 dp.
+- Los avisos opcionales incluyen fallos/aprobaciones de proyectos y, si se elige, respuestas;
+  agrupan un único aviso genérico sin contenido de conversaciones. Firebase sigue pendiente.
+- Evidencias y APK 0.2: `artifacts/wear-validation/`; guía de configuración en `wear/README.md`.
+  APK final: `codex-watch-dashboard-0.2.0.apk` (debug, universal); copia recuperable del
+  historial en `codex-watch-dashboard-source.bundle`. Plantilla local de SSH pendiente:
+  `deploy/wear-ssh-config.example`; Firebase conserva las rutas privadas documentadas.
+- Verificación final: **80 pruebas Python, 24 Node, 1 JVM y 10 de interfaz Android
+  aprobadas**; las 10 de interfaz repetidas con fuente al 130 % (restaurada a 100 %).
+  Build Android y frontend correctos. Lint Android: **0 errores, 2 avisos** de versiones
+  nuevas disponibles. Archivos `dashboard-{backend,frontend,android,large-text}-tests.log`,
+  `dashboard-lint.txt` y `dashboard-jvm-tests.xml`. Capturas inspeccionadas de Inicio,
+  proyecto y terminal; datos simulados. No equivalen a pruebas contra el VPS/modelo real.
 
 ### Wear OS — agente general primero (20 octubre, Codex)
 

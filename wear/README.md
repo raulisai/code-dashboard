@@ -1,15 +1,36 @@
-# Codex en Wear OS — MVP del agente general
+# Codex en Wear OS — dashboard nativo 0.2
 
 Cliente nativo independiente para el Galaxy Watch 7, en el mismo repositorio que el
-dashboard. Kotlin + Compose para Wear OS. API mínima en `cm/wear.py`. Comparte el
+dashboard. Kotlin + Compose para Wear OS. API específica `/api/wear/*`. Comparte el
 chat `_general/main`, el proveedor predeterminado, la continuidad entre proveedores
 y la cola existente. No necesita una aplicación propia en el teléfono.
 
 ## Experiencia
 
-Al entrar: esfera de puntos, estado real y acceso a hablar/escribir. No hay listas
-de proyectos, métricas ni historial abiertos por defecto. La esfera solo se anima
-al trabajar; respeta la escala de animación del sistema y el ciclo de vida.
+Al entrar: **Inicio**, con cuota de Claude Code (ventanas de cinco horas/semanal,
+porcentaje libre y reposición), actividad real, cola y accesos a **Proyectos**,
+**Configuración** y el **Agente general**. Fondo negro y herramientas progresivas;
+no se carga la web de escritorio dentro del reloj.
+
+Proyectos permite buscar y abrir cada proyecto. Sus herramientas nativas incluyen:
+
+- Agente: chats existentes, crear/renombrar/borrar, continuidad, proveedor/modelo/
+  esfuerzo por mensaje, dictado con revisión, respuesta y actividad reciente.
+- Peticiones: estado, detener, reintentar y eliminar de la cola.
+- Logs: últimas 60 entradas; terminal shell/Claude/Codex: captura de las últimas
+  100 líneas, actualizar, enviar un comando revisado y cerrar la sesión.
+- Archivos: exploración por páginas de 40, lectura, edición con versión optimista,
+  crear, mover y eliminar. Las vistas recortadas/binarias no se editan.
+- Git: estado, diff, historial, versión individual, ramas, guardar versión,
+  deshacer, restaurar, revertir, crear/cambiar/integrar/archivar ramas.
+- Despliegues: publicar, reiniciar, apagar, compilar y modo desarrollo; salida de
+  jobs; estado y controles de contenedores, protegidos con las reglas del dashboard.
+- Crear/importar proyectos, destacados, eliminación recuperable y papelera.
+
+Configuración permite cambiar proveedor y modelos predeterminados, permisos,
+sandbox y versiones automáticas. Inicio también ofrece servidor y aprobaciones.
+Cada acción mutante se revisa y confirma; leer una vista no ejecuta comandos ni
+crea una terminal. Los controles llaman a los mismos validadores del dashboard.
 
 Tocar la esfera abre el dictado del sistema. El texto se revisa antes de enviarlo.
 También se puede escribir con el teclado del reloj. Ejemplos:
@@ -20,10 +41,9 @@ También se puede escribir con el teclado del reloj. Ejemplos:
 - «Ahora revisa cómo quedó»
 
 El agente recibe contexto real reciente y una instrucción de respuesta breve. El
-menú secundario permite consultar la última tarea de proyecto, abrir la respuesta,
-escucharla, actualizar, configurar avisos y desvincular. Las aprobaciones sensibles
-se atienden en la web durante este MVP; el reloj muestra que requieren atención.
-La selección de proyecto permanece en la conversación del agente general.
+menú secundario permite preguntar por la última tarea, abrir la respuesta,
+escucharla, actualizar o abrir las demás secciones. El agente general sigue usando
+su proveedor predeterminado; el chat de proyecto usa el proyecto/chat elegido.
 Los mensajes comparten la cola del chat principal: si el agente ya está trabajando,
 la nueva petición espera su turno. La esfera muestra su actividad mientras tanto.
 
@@ -39,7 +59,7 @@ la nueva petición espera su turno. La esfera muestra su actividad mientras tant
 El código dura cinco minutos. El secreto de entrega tiene 256 bits y se guarda
 hasheado; la sesión se cifra hasta su primer uso. Una respuesta de vinculación
 perdida puede recuperarse durante ese intervalo. La aprobación no puede repetirse.
-Las credenciales del reloj solo sirven para las cuatro rutas nativas, incluso si
+Las credenciales del reloj solo sirven para las rutas nativas autorizadas, incluso si
 se intenta utilizarlas como cookie en las demás API. Cambiar la contraseña,
 reconfigurar TOTP o revocar sesiones también invalida el reloj.
 
@@ -49,9 +69,12 @@ cookies web, TLS permisivo ni credenciales incluidas en el APK.
 
 ## Conectividad y batería
 
-- Consulta al abrir/reanudar y después de enviar. Mientras trabaja, cada seis
-  segundos, únicamente con la actividad **RESUMED**. Se pausa después de tres
-  fallos consecutivos. En reposo no hay consultas periódicas de red.
+- Consulta al abrir/reanudar una vista y después de acciones. El chat visible
+  trabajando se actualiza cada seis segundos; Inicio con trabajo activo cada diez.
+  Únicamente **RESUMED**, pausa tras tres fallos. Logs, terminal, archivos y Git
+  se actualizan a petición; en reposo no hay consultas periódicas de red.
+- Cuota solicitada por separado, con la caché de dos minutos ya existente; un
+  proveedor lento no bloquea la navegación ni el resumen de actividad.
 - Sin servicio permanente, socket, wake locks propios, sensores ni grabación continua.
 - El dictado puede usar los servicios de reconocimiento configurados en el reloj;
   su disponibilidad y tratamiento del audio dependen del sistema. La app no graba
@@ -60,6 +83,10 @@ cookies web, TLS permisivo ni credenciales incluidas en el APK.
   el texto y el mismo identificador al reintentar, incluso tras cerrar la app.
 - La deduplicación del servidor usa un ID determinista en la cola, también ante un
   corte después de guardar la tarea y antes de responder al reloj.
+- Los envíos a proyectos guardan texto, destino, proveedor/modelo/esfuerzo e ID
+  juntos antes de la red. Cambiar de proyecto no cambia un envío por confirmar.
+  Otras operaciones no se repiten automáticamente si la respuesta se pierde:
+  actualizar el estado antes de intentar aplicarlas de nuevo.
 - Consumo real y calidad del dictado deben medirse al final en el Watch 7 físico.
   Las pruebas de emulador no equivalen a una medición de autonomía.
 
@@ -92,8 +119,8 @@ Firebase sin bloquear los servicios necesarios para Firebase Installations/FCM.
 
 Abrir la app del reloj, actualizar y elegir **Avisos → Solo atención** o **También
 respuestas**; conceder el permiso del sistema. No hace falta reconstruir el APK.
-Predeterminado: solo fallos y solicitudes de aprobación del agente general; nunca
-notificaciones de todos los proyectos ni de cada paso. Un único aviso reemplazable
+Predeterminado: solo fallos y solicitudes de aprobación de agentes/proyectos;
+opcionalmente también respuestas terminadas. Nunca avisa de cada paso. Un único aviso reemplazable
 agrupa eventos acumulados. Firebase recibe solo un título genérico y un marcador,
 sin mensajes ni respuestas. Reintentos con espera, deduplicación y baja de tokens
 `UNREGISTERED`. Las entregas dependen de conectividad y restricciones del sistema.
@@ -144,7 +171,7 @@ adb -s emulator-5580 shell am instrument -w lat.devdj.codex.watch.test/androidx.
 ```
 
 Ajustar el serial al del emulador. No usar comandos ADB sin serial si hay un reloj
-físico conectado. `ConversationTest` utiliza un transporte aislado: comprueba UI,
+físico conectado. `ConversationTest` y `DashboardTest` utilizan transporte aislado: comprueban UI,
 revisión, envío, fallo/reintento, restauración y revocación sin gastar cuota ni crear
 trabajo real. Después verificar el flujo HTTPS contra el backend desplegado y
 finalmente probar dictado, notificaciones y batería en el reloj físico.
@@ -154,7 +181,27 @@ instala ambos APK y comprueba el resultado de instrumentación. Rechaza seriales
 dispositivos físicos. Las capturas de `ConversationTest` llevan datos de prueba;
 no son respuestas reales de Claude/Codex.
 
+## Límites de la adaptación
+
+Las herramientas son nativas, principalmente vistas compactas. No incluyen una
+terminal VT interactiva (se usan captura + comando explícito), renderizado de la
+web del proyecto, adjuntos binarios, reproducción multimedia ni presentaciones
+HTML/gráficos `cm-ui`. La URL de vista previa se muestra como referencia. La
+configuración de credenciales GitHub y seguridad de cuenta/TOTP sigue en la web:
+no se distribuyen esos secretos al reloj. Esto amplía el MVP; no representa paridad
+visual ni todas las opciones avanzadas de la aplicación de escritorio.
+
+Validación local usa respuestas simuladas para no consumir cuota ni ejecutar
+acciones en proyectos reales. Falta publicar el backend y realizar la vinculación
+y pruebas de integración reales, Firebase y autonomía física, como pidió el usuario.
+
 ## Publicar backend y recuperar
+
+Desde este equipo falta configurar acceso SSH al VPS. Adaptar el bloque de
+`deploy/wear-ssh-config.example` en `%USERPROFILE%/.ssh/config`, indicando una llave
+local autorizada para `dv1`. No hay que pegar llaves ni contraseñas en `.env` ni
+versionarlas. Cuando `ssh codex-dashboard-vps` funcione se podrá completar el
+despliegue; no se modificó el acceso de `rootai`.
 
 Antes del despliegue, ejecutar el respaldo autorizado del proyecto en el VPS:
 `python3 /srv/platform/bin/backup-codex-dashboard.py`. Conservar el código pendiente

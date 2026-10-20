@@ -86,6 +86,19 @@ class WearTests(IsolatedConfig, unittest.TestCase):
         with self.assertRaises(auth.AuthError) as caught: wear.send(session['id'], 'request-1234567890', 'Hola')
         self.assertEqual(caught.exception.status, 429)
 
+    def test_project_send_shares_chat_and_rejects_cross_project_retry(self):
+        from cm import chats
+        _, session = self.link()
+        chat = chats.create('alpha', 'Desde el reloj')
+        first = wear.send(session['id'], 'project-request-12345', 'Lee el README', 'alpha', chat['id'], 'codex')
+        second = wear.send(session['id'], 'project-request-12345', 'Lee el README', 'alpha', chat['id'], 'codex')
+        self.assertEqual(first['task']['id'], second['task']['id'])
+        self.assertTrue(second['duplicate'])
+        record, = tasks.task_records()
+        self.assertEqual((record['project'], record['chat_id'], record['provider']), ('alpha', chat['id'], 'codex'))
+        for project, chat_id in [('beta', 'main'), ('../alpha', 'main'), ('alpha', 'missing')]:
+            with self.assertRaises(auth.AuthError): wear.send(session['id'], 'project-request-12345', 'Lee el README', project, chat_id, 'codex')
+
     def test_snapshot_is_bounded_and_does_not_expose_server_settings(self):
         _, session = self.link()
         meta = self.run_meta(project=config.GENERAL)
@@ -170,6 +183,63 @@ class WearHttpTests(IsolatedConfig, unittest.IsolatedAsyncioTestCase):
         response = await self.client.post('/api/wear/pair/start', json={'label': 'x' * 17000})
         self.assertEqual(response.status, 413)
         self.assertEqual((await self.client.post('/api/wear/pair/start', json=[])).status, 400)
+
+    async def test_dashboard_views_require_device_and_keep_allowlist(self):
+        from cm import projects, quota
+        token = await self.linked(); headers = {'Authorization': 'Bearer ' + token}
+        self.assertEqual((await self.client.get('/api/wear/view?view=settings')).status, 401)
+        with patch.object(projects, 'snapshot', return_value={'projects': [{'name': 'alpha'}], 'task_records': [], 'approvals': []}):
+            home = await (await self.client.get('/api/wear/view?view=home', headers=headers)).json()
+            self.assertEqual(home['projects'], 1)
+            catalog = await (await self.client.get('/api/wear/view?view=projects', headers=headers)).json()
+            self.assertEqual(catalog['projects'][0]['name'], 'alpha')
+        self.assertEqual((await self.client.get('/api/wear/view?view=security', headers=headers)).status, 404)
+        self.assertEqual((await self.client.get('/api/wear/view?view=files&project=../alpha', headers=headers)).status, 400)
+        with patch.object(quota, 'read', return_value={'claude': {'windows': [{'used': 25, 'minutes': 300}]}}):
+            self.assertEqual((await (await self.client.get('/api/wear/view?view=quota', headers=headers)).json())['claude']['windows'][0]['used'], 25)
+
+    async def test_watch_actions_reuse_body_validation_and_existing_chat_logic(self):
+        from cm import chats
+        token = await self.linked(); headers = {'Authorization': 'Bearer ' + token}
+        body = {'tool': 'chats', 'action': 'create', 'project': 'alpha', 'title': 'Reloj'}
+        self.assertEqual((await self.client.post('/api/wear/action', json=body, headers=headers)).status, 400)
+        body['confirmed'] = True
+        response = await self.client.post('/api/wear/action', json=body, headers=headers)
+        self.assertEqual(response.status, 201, await response.text())
+        self.assertEqual(chats.list_chats('alpha')[-1]['title'], 'Reloj')
+        self.assertEqual((await self.client.post('/api/wear/action', json={'confirmed': True, 'tool': 'security'}, headers=headers)).status, 404)
+
+    async def test_terminal_snapshot_is_read_only_and_project_scoped(self):
+        token = await self.linked(); headers = {'Authorization': 'Bearer ' + token}
+        with patch.object(tmux, 'pane_state', return_value={'exists': True}), patch.object(tmux, 'tmux', return_value=(0, 'hello\n', '')) as command, patch.object(tmux, 'new_session') as create:
+            response = await self.client.get('/api/wear/view?view=terminal&project=alpha&kind=shell&session=beta-shell', headers=headers)
+            self.assertEqual((await response.json())['output'], 'hello\n')
+            self.assertIn('=alpha-shell:', command.call_args.args)
+            create.assert_not_called()
+
+    async def test_files_paginate_and_keep_optimistic_edit_conflicts(self):
+        token = await self.linked(); headers = {'Authorization': 'Bearer ' + token}
+        root = config.PROJECTS / 'alpha'
+        for i in range(45): (root / f'{i:02}.txt').write_text('original')
+        data = await (await self.client.get('/api/wear/view?view=files&project=alpha', headers=headers)).json()
+        self.assertEqual(len(data['entries']), 40); self.assertEqual(data['next'], 40)
+        page = await (await self.client.get('/api/wear/view?view=files&project=alpha&offset=40', headers=headers)).json()
+        self.assertEqual(len(page['entries']), 5); self.assertIsNone(page['next'])
+        with patch('cm.gitops.versioned', side_effect=lambda project, title, source, fn: fn()):
+            response = await self.client.post('/api/wear/action', headers=headers, json={'tool': 'write', 'confirmed': True, 'project': 'alpha', 'path': '00.txt', 'content': 'changed', 'mtime': 'outdated'})
+        self.assertEqual(response.status, 409)
+        self.assertEqual((root / '00.txt').read_text(), 'original')
+
+    async def test_run_activity_cannot_cross_project_and_terminal_commands_use_literal_tmux_input(self):
+        token = await self.linked(); headers = {'Authorization': 'Bearer ' + token}
+        meta = self.run_meta(project='alpha')
+        response = await self.client.get('/api/wear/view?view=run&project=beta&run_id=' + meta['id'], headers=headers)
+        self.assertEqual(response.status, 404)
+        with patch('app.terminal_session', return_value=('alpha-shell', None)), patch.object(tmux, 'tmux', return_value=(0, '', '')) as command:
+            response = await self.client.post('/api/wear/action', headers=headers, json={'tool': 'terminal', 'confirmed': True, 'project': 'alpha', 'kind': 'shell', 'command': 'printf hello'})
+            self.assertEqual(response.status, 200)
+            self.assertEqual(command.call_args_list[0].args, ('send-keys', '-t', '=alpha-shell:', '-l', '--', 'printf hello'))
+            self.assertEqual(command.call_args_list[1].args, ('send-keys', '-t', '=alpha-shell:', 'Enter'))
 
 
 if __name__ == '__main__': unittest.main()

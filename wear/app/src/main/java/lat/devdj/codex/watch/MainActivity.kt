@@ -15,16 +15,21 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -59,15 +64,18 @@ private val Panel = Color(0xFF10171F)
 class MainActivity : ComponentActivity() {
     private val model: WatchViewModel by viewModels()
     private var openReply by mutableStateOf(false)
+    private var openDashboard by mutableStateOf(false)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         openReply = intent.getBooleanExtra("show_reply", false)
+        openDashboard = intent.getBooleanExtra("show_dashboard", false)
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.RESUMED) { model.foreground() } }
-        setContent { MaterialTheme { WatchApp(model, openReply) { openReply = false } } }
+        setContent { MaterialTheme { WatchApp(model, openReply, openDashboard = openDashboard) { openReply = false; openDashboard = false } } }
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         openReply = intent.getBooleanExtra("show_reply", false)
+        openDashboard = intent.getBooleanExtra("show_dashboard", false)
     }
     override fun onStop() {
         model.persistDraft()
@@ -76,9 +84,11 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun WatchApp(model: WatchViewModel, openReply: Boolean = false, consumed: () -> Unit = {}) {
+fun WatchApp(model: WatchViewModel, openReply: Boolean = false, initialPage: String = "dashboard", openDashboard: Boolean = false, consumed: () -> Unit = {}) {
     val state by model.ui.collectAsStateWithLifecycle()
-    var page by remember { mutableStateOf("home") }
+    var page by remember { mutableStateOf(initialPage) }
+    LaunchedEffect(page) { model.generalVisible(page in setOf("home", "compose", "reply")) }
+    DisposableEffect(model) { onDispose { model.generalVisible(false) } }
     var voiceError by remember { mutableStateOf("") }
     var listening by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -99,7 +109,8 @@ fun WatchApp(model: WatchViewModel, openReply: Boolean = false, consumed: () -> 
         onDispose { lifecycle.removeObserver(observer) }
     }
     LaunchedEffect(openReply) { if (openReply) {page = "reply"; consumed()} }
-    BackHandler(page != "home") { page = "home" }
+    LaunchedEffect(openDashboard) { if (openDashboard) {page = "dashboard"; consumed()} }
+    BackHandler(page !in setOf("home", "dashboard", "projects", "settings")) { page = "home" }
     val dictate = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         listening = false
         val text = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
@@ -140,6 +151,8 @@ fun WatchApp(model: WatchViewModel, openReply: Boolean = false, consumed: () -> 
                 } else Action("Servidor", subtle = true) { editing = true }
             }
         } else when (page) {
+            "dashboard", "projects", "settings" -> WatchDashboard(model, when(page) {"projects" -> "projects"; "settings" -> "settings"; else -> "overview"},
+                onAgent = { page = "home" }, onNotifications = { page = "notifications" }, onDisconnect = { page = "disconnect" })
             "home" -> {
                 Column(Modifier.fillMaxSize().padding(horizontal = 25.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.SpaceBetween) {
@@ -206,6 +219,9 @@ fun WatchApp(model: WatchViewModel, openReply: Boolean = false, consumed: () -> 
             }
             else -> ScrollPage {
                 Text("A tu alcance", fontSize = 16.sp, color = Ice)
+                Action("Inicio") { page = "dashboard" }
+                Action("Proyectos") { page = "projects" }
+                Action("Configuración") { page = "settings" }
                 Action("Última tarea") { model.draft("¿Cómo va la última tarea? Dime el proyecto y su estado actual."); page = "compose" }
                 Action("¿Qué proyectos tenemos?") {model.draft("¿Qué proyectos tenemos? Dime sus nombres de forma breve."); page = "compose"}
                 Action("Ver respuesta") { page = "reply" }
@@ -219,12 +235,17 @@ fun WatchApp(model: WatchViewModel, openReply: Boolean = false, consumed: () -> 
     }
 }
 
-@Composable private fun ScrollPage(content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 30.dp, vertical = 32.dp),
+@Composable internal fun ScrollPage(resetKey: String = "", content: @Composable ColumnScope.() -> Unit) {
+    val scroll = rememberScrollState()
+    val focus = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(resetKey) { scroll.scrollTo(0); focus.requestFocus() }
+    Column(Modifier.fillMaxSize().onRotaryScrollEvent { event -> scope.launch { scroll.scrollBy(event.verticalScrollPixels) }; true }
+        .focusRequester(focus).focusable().verticalScroll(scroll).padding(horizontal = 30.dp, vertical = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(9.dp), content = content)
 }
 
-@Composable private fun Action(label: String, enabled: Boolean = true, subtle: Boolean = false, onClick: () -> Unit) {
+@Composable internal fun Action(label: String, enabled: Boolean = true, subtle: Boolean = false, onClick: () -> Unit) {
     Box(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp))
         .background(if (subtle) Color.Transparent else Panel).clickable(enabled = enabled, role = Role.Button, onClick = onClick)
         .padding(horizontal = 10.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
@@ -239,11 +260,11 @@ fun WatchApp(model: WatchViewModel, openReply: Boolean = false, consumed: () -> 
     }
 }
 
-@Composable private fun ErrorText(text: String) {
+@Composable internal fun ErrorText(text: String) {
     if (text.isNotBlank()) Text(text, color = Color(0xFFFFC397), fontSize = 12.sp, textAlign = TextAlign.Center)
 }
 
-@Composable private fun Field(value: String, description: String, enabled: Boolean = true, onChange: (String) -> Unit) {
+@Composable internal fun Field(value: String, description: String, enabled: Boolean = true, onChange: (String) -> Unit) {
     BasicTextField(value, onChange, enabled = enabled, maxLines = 4, textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
         cursorBrush = androidx.compose.ui.graphics.SolidColor(Ice), modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp)
             .clip(RoundedCornerShape(12.dp)).background(Panel).semantics {contentDescription = description}.padding(12.dp),

@@ -16,7 +16,7 @@ open class WatchApi(private val store: WatchStore) {
         val connection = URL(origin + path).openConnection() as HttpsURLConnection
         try {
             connection.connectTimeout = 8000
-            connection.readTimeout = 12000
+            connection.readTimeout = if (path.contains("view=quota")) 70000 else 12000
             connection.instanceFollowRedirects = false
             connection.setRequestProperty("Accept", "application/json")
             if (authenticated) connection.setRequestProperty("Authorization", "Bearer " + store.read("token"))

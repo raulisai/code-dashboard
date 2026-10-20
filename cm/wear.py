@@ -23,7 +23,7 @@ from . import auth, availability, chats, config, runs, tasks
 
 LOG = logging.getLogger(__name__)
 PAIR_SECONDS = 300
-NATIVE_PATHS = {'/api/wear/state', '/api/wear/send', '/api/wear/notifications', '/api/wear/disconnect'}
+NATIVE_PATHS = {'/api/wear/state', '/api/wear/send', '/api/wear/notifications', '/api/wear/disconnect', '/api/wear/view', '/api/wear/action'}
 PUBLIC_PATHS = {'/api/wear/pair/start', '/api/wear/pair/poll'}
 _oauth = {}
 _retry = {}
@@ -124,7 +124,7 @@ def plain(text, limit=1600):
 
 
 def compact_task(task):
-    return {key: task.get(key, '') for key in ('id', 'project', 'title', 'status', 'run_id', 'finished_at')}
+    return {key: task.get(key, 'main' if key == 'chat_id' else '') for key in ('id', 'project', 'chat_id', 'title', 'status', 'run_id', 'finished_at')}
 
 
 def snapshot(session_id):
@@ -160,27 +160,42 @@ def snapshot(session_id):
             'firebase': firebase_client()}
 
 
-def send(session_id, request_id, text):
+def send(session_id, request_id, text, project=config.GENERAL, chat_id='main', provider='', model='', effort=''):
     if not isinstance(request_id, str) or not re.fullmatch(r'[a-zA-Z0-9-]{16,80}', request_id):
         raise auth.AuthError('Identificador de petición inválido.')
     if not isinstance(text, str) or not text.strip() or len(text) > 4000:
         raise auth.AuthError('Escribe una petición de entre 1 y 4000 caracteres.')
     text = text.strip()
+    from . import projects, lifecycle, modelcatalog
+    if not isinstance(project, str) or not isinstance(chat_id, str) or not isinstance(provider, str) or not isinstance(effort, str):
+        raise auth.AuthError('Destino de conversación inválido.')
+    if project != config.GENERAL and (project not in projects.project_names() or lifecycle.deleting(project)):
+        raise auth.AuthError('Proyecto no disponible.', 404)
+    if provider and provider not in config.PROVIDERS: raise auth.AuthError('Agente inválido.')
+    if not isinstance(model, str) or (model and not re.fullmatch(r'[A-Za-z0-9._:\[\]-]{1,80}', model)):
+        raise auth.AuthError('Modelo inválido.')
+    selected = provider or runs.load_settings()['default_provider']
+    if effort and effort not in modelcatalog.supported_efforts(selected, model): raise auth.AuthError('Esfuerzo incompatible.')
+    if project == config.GENERAL and (model or effort or provider): raise auth.AuthError('El agente general usa los ajustes predeterminados.')
     # ID determinista: incluso un corte entre guardar TSV y responder no duplica trabajo.
     task_id = 'wear-' + hashlib.sha256(f'{session_id}:{request_id}'.encode()).hexdigest()[:32]
     with tasks.LOCK:
         records = tasks.task_records()
         previous = next((task for task in records if task['id'] == task_id), None)
         if previous:
-            if previous['details'] != text:
+            if (previous['details'] != text or previous['project'] != project or previous.get('chat_id', 'main') != chat_id
+                    or previous.get('model', '') != model or previous.get('effort', '') != effort
+                    or (project != config.GENERAL and provider and previous['provider'] != provider)):
                 raise auth.AuthError('Ese identificador ya se utilizó para otro mensaje.', 409)
             return {'task': compact_task(previous), 'duplicate': True}
-        if sum(task['project'] == config.GENERAL and task['status'] in ('espera', 'working') for task in records) >= 8:
+        if sum(task['project'] == project and task['status'] in ('espera', 'working') for task in records) >= 8:
             raise auth.AuthError('El agente tiene varias peticiones pendientes. Espera a que avance.', 429)
-        chats.require(config.GENERAL, 'main')
-        provider = runs.load_settings()['default_provider']
-        provider = availability.choose(provider) or provider
-        task = tasks.new_task(config.GENERAL, provider, text.splitlines()[0], text, origin='wear')
+        try: chats.require(project, chat_id)
+        except ValueError as error: raise auth.AuthError(str(error), 404) from None
+        if project != config.GENERAL and (project not in projects.project_names() or lifecycle.deleting(project)):
+            raise auth.AuthError('El proyecto ya no está disponible.', 409)
+        if project == config.GENERAL: selected = availability.choose(selected) or selected
+        task = tasks.new_task(project, selected, text.splitlines()[0], text, origin='wear', chat_id=chat_id, model=model, effort=effort)
         task['id'] = task_id
         tasks.save_tasks(records + [task])
     runs.changed()
@@ -201,13 +216,11 @@ def preferences(session_id, mode, token=''):
 def events():
     result = []
     for task in tasks.task_records()[-300:]:
-        if task['project'] != config.GENERAL or task.get('chat_id', 'main') != 'main': continue
         if task['status'] not in ('terminado', 'error'): continue
         marker = f"task:{task.get('run_id') or task['id']}:{task['status']}"
         result.append((marker, task['status'] == 'error', 'El agente necesita atención' if task['status'] == 'error' else 'Respuesta lista'))
     for approval in runs.all_pending_approvals():
-        if approval['project'] == config.GENERAL and approval.get('chat_id', 'main') == 'main':
-            result.append((f"approval:{approval['run_id']}:{approval['id']}", True, 'El agente necesita tu aprobación en la web'))
+        result.append((f"approval:{approval['run_id']}:{approval['id']}", True, 'El agente necesita tu aprobación'))
     return result
 
 

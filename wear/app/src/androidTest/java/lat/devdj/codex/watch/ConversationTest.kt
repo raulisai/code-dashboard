@@ -21,7 +21,7 @@ class ConversationTest {
         store = WatchStore(app); store.clear(); store.write("token", "fixture-only")
         fake = FixtureApi(store)
         model = WatchViewModel(app, fake)
-        compose.setContent { MaterialTheme { WatchApp(model) } }
+        compose.setContent { MaterialTheme { WatchApp(model, initialPage = "home") } }
     }
     @After fun cleanup() { store.clear() }
     private fun capture(name: String) {

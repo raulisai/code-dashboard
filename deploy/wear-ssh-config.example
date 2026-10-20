@@ -1,0 +1,7 @@
+# Copiar/adaptar este bloque en %USERPROFILE%/.ssh/config (Windows).
+# IdentityFile debe apuntar a una llave privada LOCAL existente; nunca subirla al repo.
+Host codex-dashboard-vps
+    HostName devdj.lat
+    User dv1
+    IdentityFile ~/.ssh/codex-dashboard-vps
+    IdentitiesOnly yes
