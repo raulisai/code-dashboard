@@ -10,6 +10,14 @@ Actualización: 20 de octubre de 2026, America/Mexico_City. Codex: Wear OS 0.2 a
 
 ## 0. Estado en una línea
 
+**Watch 7 físico: app 0.2 instalada y abierta (21 octubre, Codex).** El usuario autorizó
+comenzar las pruebas físicas. ADB por Wi-Fi identificó SM-L300/API 36; instalación del APK
+`codex-watch-dashboard-0.2.0.apk` completada con Success y MainActivity abrió correctamente.
+Se vio la pantalla «Preparando vínculo…». Vinculación con MFA y entrega FCM todavía no
+verificadas. La conexión ADB quedó offline después; no se cambiaron ajustes de batería,
+seguridad ni se borraron datos. Credenciales Firebase locales preparadas fuera del repo;
+el usuario informó que su agente del VPS las está instalando.
+
 **Wear-OS publicado y homologación automática activa (20 octubre, Codex).** La rama
 `Wear-OS` contiene el código del reloj, mantiene seguimiento de `origin/Wear-OS` y recibe
 merges de `main` mediante GitHub Actions después de cada push y cada hora. La primera
@@ -332,6 +340,18 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Inicio de pruebas físicas — 21 octubre
+
+- La prohibición anterior de instalar en el reloj físico terminó con la instrucción
+  explícita del usuario de esta sesión. App 0.2 instalada en SM-L300/API 36.
+- Abrir Codex y mantener el reloj despierto para generar código; autorizarlo en `/watch`
+  con la sesión web/MFA del usuario. No se leyó ni sustituyó ninguna credencial web.
+- Confirmar backend del reloj desplegado y archivos Firebase instalados por el agente
+  del VPS; después comprobar una entrega FCM real y el permiso de notificaciones.
+- ADB descubrió dos anuncios del mismo Watch; el puerto vigente conectó y el viejo rechazó
+  la conexión. Descubrir de nuevo con `adb mdns services` si está offline; no asumir puerto
+  estable ni ejecutar escrituras ADB sin serial de destino.
 
 ### Activación y mantenimiento de Wear-OS
 
@@ -782,6 +802,17 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Instalación en Galaxy Watch 7 — 21 octubre, Codex
+
+- Detectado dispositivo físico SM-L300/API 36 antes de cualquier instalación; se verificó
+  que el paquete no existía. `adb -s <destino-verificado> install -r` del APK 0.2: Success.
+- `am start -W -n lat.devdj.codex.watch/.MainActivity`: Status ok, arranque frío correcto.
+  Una segunda apertura llevó la tarea existente al frente. Captura propia inspeccionada
+  en `artifacts/wear-validation/watch7-install.png`: pantalla de vinculación renderizada.
+- Solo se despertó la pantalla mediante KEYCODE_WAKEUP; no se instalaron APKs de pruebas,
+  no se ejecutó instrumentación que borre sesiones, no se cambiaron permisos por ADB ni
+  se enviaron tareas a proveedores. Las funciones conectadas siguen pendientes de vincular.
 
 ### GitHub y guía de puesta en marcha (20 octubre, Codex)
 
