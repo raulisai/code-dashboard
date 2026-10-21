@@ -1,5 +1,9 @@
 # Codex en Wear OS — dashboard nativo 0.2
 
+Activación por responsables (agente del VPS y administrador), llaves SSH, Firebase,
+despliegue y prueba final: [`deploy/WEAR-OS-ACTIVACION.md`](../deploy/WEAR-OS-ACTIVACION.md).
+Rama de trabajo publicada: `Wear-OS`; sincronización con `main` en `.github/WEAR-OS.md`.
+
 Cliente nativo independiente para el Galaxy Watch 7, en el mismo repositorio que el
 dashboard. Kotlin + Compose para Wear OS. API específica `/api/wear/*`. Comparte el
 chat `_general/main`, el proveedor predeterminado, la continuidad entre proveedores

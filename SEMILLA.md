@@ -10,6 +10,13 @@ Actualización: 20 de octubre de 2026, America/Mexico_City. Codex: Wear OS 0.2 a
 
 ## 0. Estado en una línea
 
+**Wear-OS publicado y homologación automática activa (20 octubre, Codex).** La rama
+`Wear-OS` contiene el código del reloj, mantiene seguimiento de `origin/Wear-OS` y recibe
+merges de `main` mediante GitHub Actions después de cada push y cada hora. La primera
+ejecución real completó merge, pruebas de backend y push. `main` recibe solo workflow y
+guía de activación; todavía no integra la app del reloj ni despliega el VPS. Instrucciones
+para agente del servidor y administrador: `deploy/WEAR-OS-ACTIVACION.md` (también en main).
+
 **Wear OS 0.2: ampliación local del dashboard (20 octubre, Codex).** Inicio ahora muestra
 cuota Claude y trabajo actual; Proyectos permite explorar y abrir chats/agentes, peticiones,
 logs, terminal, archivos, Git, despliegues y contenedores. Configuración y aprobaciones
@@ -325,6 +332,17 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Activación y mantenimiento de Wear-OS
+
+- Seguir `deploy/WEAR-OS-ACTIVACION.md`: separa tareas del agente VPS y del administrador,
+  las llaves PC→VPS y VPS→GitHub, las rutas privadas Firebase, despliegue y aceptación.
+  La guía está publicada en ambas ramas. No poner privadas SSH en carpetas del proyecto.
+- La sincronización se detiene ante conflictos o pruebas fallidas; mirar GitHub Actions
+  y corregir conservando ambas ramas. No significa homologación funcional automática de
+  nuevas pantallas/APIs ni despliegue automático. Mantener Actions y contents:write activos.
+- GitHub quedó publicado por HTTPS con el gestor de credenciales existente. No se crearon
+  llaves, tokens ni cuentas reales en esta sesión; SSH al VPS y Firebase siguen pendientes.
 
 ### Wear OS 0.2 — alcance y activación
 
@@ -764,6 +782,23 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### GitHub y guía de puesta en marcha (20 octubre, Codex)
+
+- Creada rama exacta `Wear-OS`, con commits de ambos hitos del reloj e historial completo.
+  Subida a `origin` y seguimiento configurado. Se incorporó el main remoto sin descartar
+  cambios. No se publicaron .env, JSON privados, APKs/dependencias ni artefactos locales.
+- `.github/workflows/sync-wear-os.yml`, también en main: push a main, cron minuto 17 de
+  cada hora y ejecución manual; merge con historia completa, pruebas de backend antes de
+  push y ninguna operación force/reset. Checkout v6 fijado por SHA oficial.
+- Primera ejecución de GitHub Actions comprobada como correcta y merge del bot recibido
+  mediante fetch. Documentación operativa `.github/WEAR-OS.md`. La sincronización no
+  requiere esta computadora encendida y falla explícitamente ante conflictos.
+- `deploy/WEAR-OS-ACTIVACION.md`: instrucciones listas para el agente VPS y administrador,
+  generación de llaves dedicadas fuera de Git, aprobación de públicas, cuenta de servicio
+  FCM/JSON exactos, backup y despliegue solo dashboard, recuperación y aceptación real.
+  Comandos contrastados con configuración del proyecto y documentación oficial. Son
+  instrucciones pendientes de ejecutar en el VPS; no se simula haberlo desplegado.
 
 ### Wear OS 0.2 — dashboard y herramientas (20 octubre, Codex)
 
