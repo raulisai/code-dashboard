@@ -248,6 +248,10 @@ private fun query(route: WatchRoute): String = "/api/wear/view?view=${encoded(ro
             }
             "settings" -> {
                 Heading("Ajustes", Glyph.Sliders)
+                val voiceOn = model.ui.collectAsState().value.voice
+                // Local to this watch: whether answers are read aloud, and with which voice.
+                Action(if (voiceOn) "Leer respuestas: sí" else "Leer respuestas: no", glyph = Glyph.Speaker, tint = if (voiceOn) Mint else Dim,
+                    detail = model.speaker.voiceName.ifBlank { "Voz del sistema" }) { model.voice(!voiceOn) }
                 Action("Avisos", glyph = Glyph.Bell) { nav.push(Dest.Push) }
                 val settings = data?.optJSONObject("settings")
                 if (settings != null) {
@@ -255,7 +259,8 @@ private fun query(route: WatchRoute): String = "/api/wear/view?view=${encoded(ro
                         Triple("default_provider", "Agente predeterminado", listOf("claude", "codex")),
                         Triple("claude_permission", "Permisos de Claude", listOf("ask", "auto", "edits")),
                         Triple("codex_sandbox", "Acceso de Codex", listOf("read-only", "workspace", "full")),
-                        Triple("auto_commit", "Versiones automáticas", listOf("on", "off")))) {
+                        Triple("auto_commit", "Versiones automáticas", listOf("on", "off")),
+                        Triple("wear_fast", "Respuestas rápidas del reloj", listOf("on", "off")))) {
                         Note(label + ": " + settings.optString(key))
                         for (option in options) Action(option, glyph = if (settings.optString(key) == option) Glyph.Check else null, tint = Mint) { ask(Operation("$label: $option", "settings", values = mapOf(key to option))) }
                     }

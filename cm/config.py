@@ -47,6 +47,8 @@ DEFAULT_SETTINGS = {
     'codex_model': os.environ.get('CODEX_MODEL', ''),
     # on: cada acción (agente, editor, archivos, despliegue) queda como un commit propio.
     'auto_commit': os.environ.get('AUTO_COMMIT', 'on'),
+    # on: lo que se pide desde el reloj al agente general va con esfuerzo bajo, para que conteste en segundos.
+    'wear_fast': os.environ.get('WEAR_FAST', 'on'),
 }
 CLAUDE_PERMISSIONS = ('ask', 'auto', 'edits')
 CODEX_SANDBOXES = ('full', 'workspace', 'read-only')

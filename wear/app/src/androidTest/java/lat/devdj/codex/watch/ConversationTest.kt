@@ -41,13 +41,17 @@ class ConversationTest {
         compose.onNodeWithText("Última tarea").assertIsNotDisplayed()
         capture("agent-home")
         below("¿Qué proyectos tenemos?").performClick()
-        compose.onNodeWithContentDescription("Mensaje al agente").assertTextContains("¿Qué proyectos tenemos?", substring = true)
-        capture("agent-review")
-        tap("Enviar")
         compose.waitUntil(10000) { fake.requests.isNotEmpty() && !model.ui.value.busy }
         assertEquals(1, fake.accepted.size)
         assertTrue(fake.requests.first().getString("text").contains("proyectos"))
+        // Back up to the agent to see and hear the answer.
+        compose.waitUntil(10000) { compose.onAllNodesWithContentDescription("Hablar con el agente general").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("Hablar con el agente general").assertIsDisplayed()
+        below("Escribir").performClick()
+        compose.onNodeWithContentDescription("Mensaje al agente").performTextInput("Revisa alpha")
+        capture("agent-review")
+        tap("Enviar")
+        compose.waitUntil(10000) { fake.requests.size == 2 && !model.ui.value.busy }
     }
     @Test fun homeShowsWhatEachCodingAgentHasLeftAndTheNewestNotice() {
         runBlocking { model.loadHome(); model.loadQuota() }
@@ -83,6 +87,23 @@ class ConversationTest {
         compose.onRoot().performTouchInput { moveBy(Offset(width * 0.4f, 0f)); up() }
         compose.waitUntil(10000) { model.nav.stack.size == 1 }
     }
+    @Test fun aVoiceTurnLeavesAtOnceAnswersInstantlyAndCanBeStopped() {
+        runBlocking { model.refresh() }
+        compose.runOnIdle { model.ask("¿Cómo va la tienda?") }
+        compose.waitUntil(10000) { fake.accepted.isNotEmpty() && !model.ui.value.busy }
+        assertEquals("¿Cómo va la tienda?", fake.requests.single().getString("text"))
+        compose.onNodeWithText("Ok, buscando.").assertIsDisplayed()
+        fake.state = "working"; fake.speech = "Va, reviso la tienda. Está en línea"
+        runBlocking { model.refresh() }
+        // Live caption: the newest words, even before their sentence ends.
+        compose.onNodeWithText("Está en línea").assertIsDisplayed()
+        capture("agent-working")
+        compose.onNodeWithContentDescription("Detener").performClick()
+        compose.waitUntil(10000) { fake.actions.isNotEmpty() }
+        val stop = fake.actions.single()
+        assertEquals(listOf("tasks", "stop", "fixture", "true"), listOf(stop.getString("tool"), stop.getString("action"), stop.getString("id"), stop.get("confirmed").toString()))
+        compose.waitUntil(10000) { !model.ui.value.working }
+    }
     @Test fun noticesOpenTheirAgentAndTheFullList() {
         runBlocking { model.loadHome() }
         below("Actualizar tienda").performClick()
@@ -114,8 +135,6 @@ class ConversationTest {
     }
     @Test fun latestTaskQuestionGoesThroughTheSameGeneralAgent() {
         below("Última tarea").performClick()
-        compose.onNodeWithContentDescription("Mensaje al agente").assertTextContains("¿Cómo va la última tarea?", substring = true)
-        tap("Enviar")
         compose.waitUntil(10000) { fake.requests.isNotEmpty() && !model.ui.value.busy }
         assertTrue(fake.requests.single().getString("text").contains("proyecto y su estado"))
     }
@@ -150,25 +169,30 @@ private class FixtureApi(store: WatchStore) : WatchApi(store) {
     @Volatile var reply = "La última tarea es actualizar alpha."
     @Volatile var fail = false
     @Volatile var revoked = false
+    @Volatile var speech = ""
     val requests = java.util.concurrent.CopyOnWriteArrayList<JSONObject>()
+    val actions = java.util.concurrent.CopyOnWriteArrayList<JSONObject>()
     val accepted = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     override suspend fun call(path: String, body: JSONObject?, authenticated: Boolean): JSONObject {
         if (revoked) throw ApiError(401, "Vuelve a vincular el reloj")
         val now = System.currentTimeMillis() / 1000
-        return when (path) {
-            "/api/wear/send" -> {
+        return when {
+            path == "/api/wear/send" -> {
                 val data = requireNotNull(body); requests.add(JSONObject(data.toString()))
                 if (fail) throw ApiError(503, "No pude confirmar el envío")
                 accepted.add(data.getString("request_id")); state = "queued"
                 JSONObject().put("task", JSONObject().put("id", "fixture"))
             }
-            "/api/wear/state" -> JSONObject().put("state", state).put("activity", "Leyendo").put("reply", reply)
+            path == "/api/wear/action" -> { actions.add(JSONObject(requireNotNull(body).toString())); state = "idle"; JSONObject().put("message", "Petición detenida") }
+            path.startsWith("/api/wear/state") -> JSONObject().put("state", state).put("activity", "Leyendo").put("reply", reply)
+                .put("speech", speech).put("run_id", "run-fixture").put("version", (state + speech + reply).hashCode().toString())
                 .put("updated_at", now).put("notifications", "attention")
-                .put("task", JSONObject().put("title", "¿Cómo va la última tarea?"))
+                .put("task", JSONObject().put("id", "fixture").put("status", if (state == "queued") "espera" else if (state == "working") "working" else "terminado")
+                    .put("title", "¿Cómo va la última tarea?"))
                 .put("last_task", JSONObject().put("project", "alpha").put("title", "Actualizar tienda").put("status", "working"))
-            "/api/wear/view?view=home" -> JSONObject("""{"working":[],"queued":0,"projects":1,"approvals":0,"recent":[
+            path == "/api/wear/view?view=home" -> JSONObject("""{"working":[],"queued":0,"projects":1,"approvals":0,"recent":[
                 {"kind":"terminado","project":"alpha","title":"Actualizar tienda","provider":"claude","at":${now - 300}}]}""")
-            "/api/wear/view?view=quota", "/api/wear/view?view=quota&refresh=1" -> JSONObject("""{"claude":{"state":"ok","windows":[{"minutes":300,"used":28,"resets_at":${now + 3600}},{"minutes":10080,"used":60,"resets_at":${now + 90000}}]},
+            path.startsWith("/api/wear/view?view=quota") -> JSONObject("""{"claude":{"state":"ok","windows":[{"minutes":300,"used":28,"resets_at":${now + 3600}},{"minutes":10080,"used":60,"resets_at":${now + 90000}}]},
                 "codex":{"state":"ok","windows":[{"minutes":300,"used":10,"resets_at":${now + 7200}}]},"stale":false}""")
             else -> JSONObject().put("ok", true)
         }

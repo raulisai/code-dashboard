@@ -3,7 +3,11 @@
     <uses-feature android:name="android.hardware.type.watch" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Dictation inside the app with the watch's recognition service. Audio is never stored or sent by this app. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <queries>
+        <intent><action android:name="android.speech.RecognitionService" /></intent>
         <intent><action android:name="android.speech.action.RECOGNIZE_SPEECH" /></intent>
         <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
     </queries>

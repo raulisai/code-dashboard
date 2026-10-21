@@ -52,6 +52,49 @@ class WatchUiTest {
         assertEquals("hace 3 d", ago(1000, 1000 + 3 * 86400 + 10))
     }
 
+    @Test fun theStatusFollowsTheVoiceTurn() {
+        assertEquals("Te escucho", WatchUi(listening = true, state = "working").label)
+        assertEquals("Enviando", WatchUi(busy = true).label)
+        assertEquals("Ok, buscando.", WatchUi(state = "queued", ack = "Ok, buscando.").label)
+        assertEquals("En cola · 2 antes", WatchUi(state = "queued", ack = "Ok, buscando.", ahead = 2).label)
+        assertEquals("Ok, buscando.", WatchUi(state = "working", ack = "Ok, buscando.").label)
+        assertEquals("Revisando contenedores", WatchUi(state = "working", ack = "Ok, buscando.", activity = "Revisando contenedores").label)
+    }
+
+    @Test fun theInstantReplyFitsWhatWasAsked() {
+        assertEquals("Ok, buscando.", ack("¿Cómo va la tienda?", 0))
+        assertEquals("Déjame ver.", ack("qué contenedores están caídos", 1))
+        assertEquals("Va, me pongo con eso.", ack("Despliega alpha", 0))
+        assertEquals("Ok, en eso estoy.", ack("Corrige el formulario", 4))
+        assertEquals("", ack("Hola", 0))
+        assertEquals("", ack("gracias, perfecto", 2))
+        assertEquals("", ack("   ", 0))
+    }
+
+    @Test fun sentencesAreReadOnlyOnceTheyAreFinished() {
+        assertEquals(-1, sentenceEnd("Va, reviso", 0))
+        assertEquals(-1, sentenceEnd("Cuesta 3.", 0))
+        assertEquals(11, sentenceEnd("Va, reviso. Ya", 0))
+        assertEquals(30, sentenceEnd("Va, reviso. Hay 3.5 GB libres. ", 0))
+        assertEquals(-1, sentenceEnd("Va, reviso. Ya", 11))
+        assertEquals(6, sentenceEnd("Listo\n\nTodo", 0))
+        assertEquals("Hay 3.5 GB libres.", lastSentence("Va, reviso. Hay 3.5 GB libres."))
+        assertEquals("Todo bien", lastSentence("Uno.\nTodo bien"))
+        assertEquals("", lastSentence("  "))
+    }
+
+    @Test fun theVoiceReadsPlainSpanish() {
+        assertEquals("Mira el enlace ahora", spoken("Mira **https://alpha.example.com/x** ahora"))
+        assertEquals("Listo", spoken("Listo 🚀"))
+        assertEquals(600, spoken("a".repeat(900)).length)
+        assertTrue(voiceScore("MX", 400, false) > voiceScore("ES", 500, false))
+        assertTrue(voiceScore("US", 400, false) > voiceScore("US", 400, true))
+        assertTrue(voiceScore("MX", 500, true) > voiceScore("MX", 300, false))
+        assertEquals("es-MX", spanishTag(java.util.Locale.US))
+        assertEquals("es-AR", spanishTag(java.util.Locale.forLanguageTag("es-AR")))
+        assertEquals("es-MX", spanishTag(java.util.Locale.forLanguageTag("es")))
+    }
+
     @Test fun noticesSayWhereTheyCameFrom() {
         assertEquals("Agente", Notice("terminado", "_general", "x", 0, "claude").where)
         assertEquals("alpha", Notice("error", "alpha", "x", 0, "codex").where)

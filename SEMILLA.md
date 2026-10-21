@@ -1,6 +1,8 @@
 # SEMILLA — estado del trabajo en codex-dashboard
 
-Actualización: 21 de octubre de 2026. Claude: Wear OS 0.3 con interfaz minimalista (agente general primero, cuota y avisos, gesto de deslizar para volver); sin commit, backend y reloj físico pendientes.
+Actualización: 21 de octubre de 2026. Claude: Wear OS 0.4, conversación por voz rápida (dictado dentro de la app, envío al terminar de hablar, respuesta inmediata, lectura en voz alta frase a frase, espera larga en el servidor); sin commit, backend sin desplegar y 0.4 sin instalar en el reloj.
+
+Actualización anterior: 21 de octubre de 2026. Claude: Wear OS 0.3 con interfaz minimalista (agente general primero, cuota y avisos, gesto de deslizar para volver).
 
 Actualización anterior: 20 de octubre de 2026, America/Mexico_City. Codex: Wear OS 0.2 ampliado con Inicio, Proyectos, Configuración y herramientas nativas; backend y Firebase pendientes de activación.
 
@@ -11,6 +13,22 @@ Actualización anterior: 20 de octubre de 2026, America/Mexico_City. Codex: Wear
 Última actualización: 2026-10-18, 08:50 Europe/Berlin. Autor: Claude (agente general: interfaz viva y más animaciones).
 
 ## 0. Estado en una línea
+
+**Wear OS 0.4: el agente general por voz, rápido (21 octubre, Claude).** El usuario dijo que
+el agente del reloj «no responde y tarda mucho»; pidió respuestas inmediatas («Ok, buscando»),
+voz fluida en español y el dictado de Samsung como en el control remoto de `universalControl`.
+Causas halladas: el dictado abría la pantalla de Google y luego otra de revisión que esperaba
+un toque para enviar (parecía que no respondía), el reloj consultaba cada 6 s, la voz solo
+sonaba al pulsar «Escuchar» y el prompt del reloj invitaba a usar herramientas siempre. Ahora:
+dictado dentro de la app con el reconocedor del reloj, envío automático al terminar de hablar,
+frase instantánea hablada, lectura en voz alta de cada frase del agente mientras escribe, botón
+detener, pantalla encendida mientras dura la conversación y espera larga en `/api/wear/state`.
+Servidor: prompt del reloj más directo y, con el nuevo ajuste `wear_fast` (activado), esfuerzo
+bajo para los mensajes del reloj al agente general. **Sin commit; backend sin desplegar.**
+La 0.4.0 está **instalada en el Watch 7** (21 oct, 14:28, `install -r` sobre la 0.3.0, datos
+conservados, abre sin fallos); el permiso de micrófono aún no se ha concedido (lo pide al
+primer toque de la esfera). El backend publicado
+hoy ya es el de Wear OS (responde «Vuelve a vincular el reloj desde la web» sin token).
 
 **Wear OS 0.3: interfaz minimalista y gesto de volver (21 octubre, Claude).** Pedido del
 usuario: lo primero que muestra el reloj es el agente principal (hablar + estado de sus agentes
@@ -363,6 +381,29 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Wear OS 0.4 — voz rápida (21 octubre, Claude)
+
+- **Desplegar el backend** de esta rama: espera larga, `speech`/`ahead`/`version` en el estado,
+  actividad en palabras, prompt nuevo y `wear_fast`. Con el servidor anterior la 0.4 funciona,
+  pero consulta cada 3 s, solo lee la respuesta final y no usa esfuerzo bajo.
+- 0.4.0 **instalada en el Watch 7** (SM-L300, serial RFAY20EF46W). ADB se conectó solo por mDNS
+  con dos transportes del mismo reloj; se usó uno (`adb -t <id>`) tras comprobar modelo y serial.
+  Falta probar con voz real: permiso de micrófono (lo pide al primer toque), que el reconocedor
+  sea el de Samsung, acento y ruido, voz de lectura elegida
+  (se ve en Ajustes → «Leer respuestas», debajo), cortes al bajar la muñeca y batería. Solo se
+  probó en el emulador: el reconocimiento y el habla reales no se pueden simular en las pruebas.
+- Decisión mía, revisable con el usuario: lo dictado **se envía sin revisión** (como hace la web
+  desde que dejó de esperar 3 s); lo escrito con el teclado sí se revisa. Para equivocaciones
+  está el botón detener. Si prefiere revisar, cambiar `onFinal` → `ask` en `WatchViewModel.kt`.
+- `wear_fast` baja el esfuerzo solo si el catálogo del CLI declara `low` para el modelo
+  predeterminado; si no, no cambia nada. Es más rápido pero menos cuidadoso en tareas largas.
+  Se apaga en Ajustes del reloj («Respuestas rápidas del reloj») o con `WEAR_FAST=off`.
+- La pantalla se mantiene encendida hasta 2 min mientras se escucha, se espera la respuesta o se
+  habla; si el sistema la apaga igualmente (gesto de muñeca), la lectura se corta y la respuesta
+  se ve al volver. No se avisa por push de cada frase.
+- Frases instantáneas: tres para preguntas y tres para encargos, por palabras iniciales en
+  `Voice.kt` (`ack`). Los saludos no llevan frase porque el agente contesta enseguida.
 
 ### Wear OS 0.3 — interfaz minimalista (21 octubre, Claude)
 
@@ -868,6 +909,29 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Wear OS 0.4 — conversación por voz rápida (21 octubre, Claude)
+
+- Reloj: `Voice.kt` nuevo con `Speaker` (TextToSpeech creado una vez en el ViewModel, mejor voz
+  española instalada, uso asistente, cola de frases), `Ear` (SpeechRecognizer dentro de la app,
+  mismo enfoque que `universalControl/watch/.../voice/SpeechInput.kt`: servicio del sistema,
+  si no el del dispositivo, y si falla antes de oír la pantalla del sistema), `ack`,
+  `sentenceEnd`, `lastSentence`, `spoken` y `voiceScore`. `WatchViewModel.kt`: `listen`, `ask`,
+  `stopTask`, `voice`, lectura progresiva (`speakProgress`) y espera larga sin bloquear el envío
+  (`sendEpoch`). `MainActivity.kt`: permiso de micrófono, respaldo al dictado del sistema,
+  pantalla encendida, Atrás cancela la escucha. Pantallas: texto en vivo bajo la esfera (que
+  crece con la voz), frase en curso con botón detener, Ajustes con «Leer respuestas» y
+  «Respuestas rápidas del reloj»; los atajos preguntan con un toque. Manifiesto: `RECORD_AUDIO`.
+  App 0.4.0 (versionCode 4).
+- Servidor: `wear.activity_of`, `speech`, `ahead` y `version` en `wear.snapshot`; espera larga en
+  `wear_state` (`wait` ≤ 25 s, revisa cada 0,7 s con la caché de eventos); prompt del reloj en
+  `runs.start_run`; ajuste `wear_fast` en `config.DEFAULT_SETTINGS` con validación.
+- Verificación: **25 pruebas del backend de Wear OK** (4 nuevas: frases y huella, cola,
+  esfuerzo, espera larga); `test_chats`, `test_availability` y `test_models` OK; los mismos 3
+  fallos de Windows de antes en `test_general`/`test_http`. **10 JVM OK** (frase instantánea,
+  cortes de frase, voz, estado). **18 de interfaz OK en `emulator-5580`**, incluida una de turno
+  por voz completo con botón detener. Lint: 0 errores (1 aviso de Firebase 26 disponible).
+  Captura del estado trabajando revisada.
 
 ### Wear OS 0.3 — interfaz minimalista y navegación por gesto (21 octubre, Claude)
 

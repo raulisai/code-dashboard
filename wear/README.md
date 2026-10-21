@@ -1,4 +1,4 @@
-# Codex en Wear OS — dashboard nativo 0.3
+# Codex en Wear OS — dashboard nativo 0.4
 
 Activación por responsables (agente del VPS y administrador), llaves SSH, Firebase,
 despliegue y prueba final: [`deploy/WEAR-OS-ACTIVACION.md`](../deploy/WEAR-OS-ACTIVACION.md).
@@ -64,9 +64,34 @@ aprobaciones. Toda herramienta termina con tres botones: volver, inicio y actual
 Cada acción mutante se revisa y confirma; leer una vista no ejecuta comandos ni
 crea una terminal. Los controles llaman a los mismos validadores del dashboard.
 
-El texto dictado se revisa antes de enviarlo (micrófono y enviar quedan arriba de la caja
-de texto, a la vista aunque el mensaje sea largo). También se puede escribir con el teclado
-del reloj. Ejemplos:
+## Conversación por voz
+
+Pensada para que se sienta inmediata:
+
+1. **Tocar la esfera** empieza a escuchar dentro de la app, con el reconocedor del propio reloj
+   (el de Samsung en un Galaxy Watch, igual que el control remoto de `universalControl`), sin
+   abrir otra pantalla. Las palabras aparecen en vivo bajo la esfera, que crece con tu voz.
+   La primera vez pide el permiso del micrófono. Si el reconocedor no arranca o falla antes de
+   oír nada, se abre el dictado del sistema; si tampoco existe, el teclado.
+2. **Al dejar de hablar se envía solo** (o al tocar la esfera otra vez). Atrás cancela sin enviar.
+3. **Respuesta inmediata**: el reloj dice en voz alta «Ok, buscando.», «Va, me pongo con eso.»…
+   (según sea pregunta o encargo; nada ante un saludo) antes de que el mensaje llegue al servidor.
+4. **La respuesta se lee mientras se escribe**: cada frase terminada del agente se dice en cuanto
+   existe y el resto al acabar. Debajo de la esfera se ve la frase en curso, con un botón para
+   **detener** el mensaje (o quitarlo de la cola si aún no empezó). El estado dice lo que hace
+   en palabras («Revisando contenedores», «En cola · 1 antes»).
+5. Tocar la esfera mientras habla la interrumpe y vuelve a escuchar.
+
+La voz usa el motor del sistema con la mejor voz española instalada (prioridad México, luego
+Estados Unidos y Latinoamérica, por calidad, evitando las que necesitan red), a 1,05× y con uso
+«asistente». Se prepara al abrir la app para que la primera palabra no espere. Mientras la
+conversación está viva (escuchando, esperando la respuesta o hablando, hasta 2 min) la pantalla
+no se apaga. Ajustes → «Leer respuestas» la desactiva en este reloj; «Respuestas rápidas del
+reloj» (servidor, activado) manda los mensajes del reloj al agente general con esfuerzo bajo e
+instrucciones de contestar sin herramientas cuando no hacen falta.
+
+También se puede escribir con el teclado del reloj («Escribir»): ese texto se revisa y se envía
+con el botón. Ejemplos:
 
 - «¿Cómo va la última tarea?»
 - «¿Qué proyectos tenemos?»
@@ -74,8 +99,8 @@ del reloj. Ejemplos:
 - «Ahora revisa cómo quedó»
 
 El agente recibe contexto real reciente y una instrucción de respuesta breve. «Última tarea»
-y «¿Qué proyectos tenemos?» preparan la pregunta para revisarla; la respuesta se abre desde
-la línea de la primera pantalla y se puede escuchar. El agente general sigue usando
+y «¿Qué proyectos tenemos?» preguntan con un toque y suben a la esfera para ver y oír la
+respuesta; «Tu respuesta» la muestra completa y la repite. El agente general sigue usando
 su proveedor predeterminado; el chat de proyecto usa el proyecto/chat elegido.
 Los mensajes comparten la cola del chat principal: si el agente ya está trabajando,
 la nueva petición espera su turno. La esfera muestra su actividad mientras tanto.
@@ -104,18 +129,21 @@ cookies web, TLS permisivo ni credenciales incluidas en el APK.
 
 - Consulta al abrir/reanudar una vista y después de acciones. Al reanudar la primera pantalla
   pide el estado del agente, los avisos (`view=home`: `recent` y `approvals`) y la cuota; todo
-  se guarda cifrado para pintar al instante sin red. El chat visible trabajando se actualiza
-  cada seis segundos; la primera pantalla, cada seis segundos solo mientras el agente trabaja y
-  una vez más al terminar para traer el aviso nuevo.
+  se guarda cifrado para pintar al instante sin red. Mientras el agente general trabaja (y la
+  conversación está a la vista o se espera su respuesta), el reloj usa una **espera larga**:
+  `GET /api/wear/state?wait=20&since=<huella>` vuelve en cuanto cambia algo (cada frase, la
+  actividad, la respuesta) o a los 20 s, así que no hay retraso de sondeo. Con un servidor
+  anterior, sin huella, consulta cada tres segundos. Al terminar trae una vez el aviso nuevo.
+  El chat de un proyecto visible trabajando se actualiza cada seis segundos.
   Únicamente **RESUMED**, pausa tras tres fallos. Logs, terminal, archivos y Git
   se actualizan a petición; en reposo no hay consultas periódicas de red.
 - Cuota solicitada por separado, con la caché de dos minutos ya existente (no más de una vez
   por minuto; «Actualizar» fuerza `refresh=1`); un proveedor lento no bloquea la navegación
   ni el resumen de actividad.
 - Sin servicio permanente, socket, wake locks propios, sensores ni grabación continua.
-- El dictado puede usar los servicios de reconocimiento configurados en el reloj;
-  su disponibilidad y tratamiento del audio dependen del sistema. La app no graba
-  ni envía audio al VPS; envía la transcripción revisada.
+- El dictado usa el servicio de reconocimiento del reloj y el micrófono solo mientras escucha;
+  se corta al salir de la pantalla. Su disponibilidad y tratamiento del audio
+  dependen de ese servicio. La app no graba ni envía audio al VPS; envía solo el texto.
 - Estado sin conexión con hora de actualización. Un envío sin confirmación conserva
   el texto y el mismo identificador al reintentar, incluso tras cerrar la app.
 - La deduplicación del servidor usa un ID determinista en la cola, también ante un

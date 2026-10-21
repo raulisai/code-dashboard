@@ -1,5 +1,6 @@
 package lat.devdj.codex.watch
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
@@ -29,7 +30,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /** 72 points, no blur, textures, network or idle animation. Stops with activity lifecycle. */
-@Composable fun Orb(state: String, active: Boolean, diameter: Dp = 84.dp, onTap: () -> Unit) {
+@Composable fun Orb(state: String, active: Boolean, level: Float = 0f, diameter: Dp = 84.dp, onTap: () -> Unit) {
     val owner = LocalLifecycleOwner.current
     var phase by remember { mutableFloatStateOf(0f) }
     val context = LocalContext.current
@@ -39,13 +40,15 @@ import kotlin.math.sqrt
             while (true) { delay(50); phase += 0.025f }
         }
     }
-    val color = when (state) { "attention", "error" -> Color(0xFFFFBA84); "listening" -> Color(0xFFB3F4D0); else -> Ice }
+    val color = when (state) { "attention", "error" -> Color(0xFFFFBA84); "listening" -> Color(0xFFB3F4D0); "speaking" -> Sky; else -> Ice }
+    // The voice breathes the sphere: louder speech, slightly larger sphere and glow.
+    val swell by animateFloatAsState(if (state == "listening") level else 0f, label = "voice")
     val orbSize = (diameter.value / LocalDensity.current.fontScale.coerceAtLeast(1f)).coerceIn(52f, diameter.value).dp
     Canvas(Modifier.size(orbSize).clip(CircleShape).semantics { contentDescription = "Hablar con el agente general" }
         .clickable(role = Role.Button, onClick = onTap)) {
-        val radius = size.minDimension * 0.38f
+        val radius = size.minDimension * (0.36f + 0.06f * swell)
         val center = Offset(size.width / 2, size.height / 2)
-        drawCircle(Brush.radialGradient(listOf(color.copy(alpha = .14f), Color.Transparent), center, radius * 1.3f), radius * 1.3f, center)
+        drawCircle(Brush.radialGradient(listOf(color.copy(alpha = .14f + .2f * swell), Color.Transparent), center, radius * 1.3f), radius * 1.3f, center)
         for (i in 0 until 72) {
             val y = 1f - 2f * (i + .5f) / 72f
             val r = sqrt(1f - y * y)

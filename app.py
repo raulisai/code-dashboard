@@ -222,7 +222,14 @@ async def wear_approve(request):
 
 
 async def wear_state(request):
-    return reply(await blocking(wear.snapshot, request[websecurity.SESSION_KEY]['id']))
+    """Con `wait` y `since`, espera hasta 25 s a que cambie la huella: el reloj recibe cada frase y la respuesta en cuanto existen."""
+    sid = request[websecurity.SESSION_KEY]['id']
+    data = await blocking(wear.snapshot, sid)
+    since, deadline = request.query.get('since', ''), time.monotonic() + min(25, max(0, query_int(request, 'wait', 0)))
+    while since and data['version'] == since and time.monotonic() < deadline:
+        await asyncio.sleep(0.7)
+        data = await blocking(wear.snapshot, sid)
+    return reply(data)
 
 
 async def wear_send(request):

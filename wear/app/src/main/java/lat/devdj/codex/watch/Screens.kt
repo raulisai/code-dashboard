@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material3.Text
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private fun noticeGlyph(notice: Notice) = when (notice.kind) { "approval" -> Glyph.Shield; "error" -> Glyph.Alert; else -> Glyph.Check }
@@ -37,7 +38,7 @@ private fun openNotice(nav: Nav, notice: Notice) = nav.push(when {
 })
 
 /** First screen: the general agent (tap the orb to talk), what its coding agents have left, and the latest news. */
-@Composable internal fun HomeScreen(model: WatchViewModel, state: WatchUi, listening: Boolean, onTalk: () -> Unit) {
+@Composable internal fun HomeScreen(model: WatchViewModel, state: WatchUi, onTalk: () -> Unit) {
     val nav = model.nav
     val scope = rememberCoroutineScope()
     val now = System.currentTimeMillis() / 1000
@@ -45,12 +46,16 @@ private fun openNotice(nav: Nav, notice: Notice) = nav.push(when {
     val screen = LocalConfiguration.current.screenHeightDp
     // The first screen is exactly one display tall; the orb takes whatever the other three rows leave.
     val orb = (screen - 34 - 18 - 34 - 30 - 20).coerceIn(56, 84).dp
-    ScrollPage("home", top = 0.dp) {
+    ScrollPage("home", top = 0.dp, backToTop = state.turn) {
         Column(Modifier.fillMaxWidth().height(screen.dp).padding(top = 20.dp, bottom = 14.dp), Arrangement.SpaceEvenly, Alignment.CenterHorizontally) {
             StatusLine(state)
-            Orb(state = if (listening) "listening" else state.state, active = state.working || listening, diameter = orb, onTap = onTalk)
-            QuotaDuo(state) { nav.push(Dest.Quota) }
-            Glance(state, large, nav)
+            Orb(state = when { state.listening -> "listening"; state.speaking -> "speaking"; else -> state.state },
+                active = state.working || state.listening || state.speaking, level = state.level, diameter = orb, onTap = onTalk)
+            // While listening the words take the place of the quota: what you read is exactly what will be sent.
+            if (state.listening) Text(state.heard.ifBlank { "…" }, color = Paper, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 168.dp))
+            else QuotaDuo(state) { nav.push(Dest.Quota) }
+            Glance(model, state, large)
         }
         if (state.notices.isNotEmpty()) {
             Heading("Avisos", Glyph.Bell)
@@ -66,8 +71,9 @@ private fun openNotice(nav: Nav, notice: Notice) = nav.push(when {
             Dock(Glyph.Sliders, "Ajustes") { nav.push(Dest.Tool(WatchRoute("settings"))) }
         }
         Action(if (state.pending) "Reintentar envío" else "Escribir", glyph = if (state.pending) Glyph.Refresh else Glyph.Keyboard, tint = if (state.pending) Amber else Ice) { nav.push(Dest.Compose) }
-        Action("Última tarea", glyph = Glyph.Clock) { model.draft("¿Cómo va la última tarea? Dime el proyecto y su estado actual."); nav.push(Dest.Compose) }
-        Action("¿Qué proyectos tenemos?", glyph = Glyph.Folder) { model.draft("¿Qué proyectos tenemos? Dime sus nombres de forma breve."); nav.push(Dest.Compose) }
+        // One tap asks: shortcuts go straight to the agent, like saying them.
+        Action("Última tarea", glyph = Glyph.Clock) { model.ask("¿Cómo va la última tarea? Dime el proyecto y su estado actual.") }
+        Action("¿Qué proyectos tenemos?", glyph = Glyph.Folder) { model.ask("¿Qué proyectos tenemos? Dime sus nombres de forma breve.") }
         Action("Actualizar", subtle = true, glyph = Glyph.Refresh) { scope.launch { model.refreshAll() } }
         ErrorText(state.error)
     }
@@ -76,7 +82,7 @@ private fun openNotice(nav: Nav, notice: Notice) = nav.push(when {
 @Composable private fun StatusLine(state: WatchUi) {
     val color = when {
         state.error.isNotBlank() || state.state in setOf("attention", "error") -> Amber
-        state.working -> Mint
+        state.working || state.listening -> Mint
         else -> Ice
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -106,20 +112,31 @@ private fun spoken(name: String, quota: ProviderQuota?) = name + (quota?.left?.l
     }
 }
 
-/** One line under the quota: the fresh reply if there is one, otherwise the newest notice. */
-@Composable private fun Glance(state: WatchUi, large: Boolean, nav: Nav) {
+/**
+ * One line under the quota, by priority: how to finish speaking, a message to retry, what the agent is saying right
+ * now (with a stop button), a short notice, the fresh answer, the newest server notice.
+ */
+@Composable private fun Glance(model: WatchViewModel, state: WatchUi, large: Boolean) {
+    val nav = model.nav
     val notice = state.notices.firstOrNull()
+    val lines = if (large) 1 else 2
+    LaunchedEffect(state.hint) { if (state.hint.isNotBlank()) { delay(4000); model.clearHint() } }
     when {
+        state.listening -> Text("Toca la esfera al terminar", color = Dim, fontSize = 11.sp, maxLines = 1)
         state.pending -> GlanceRow(Glyph.Refresh, Amber, "Mensaje por enviar · toca para reintentar", 2) { nav.push(Dest.Compose) }
-        state.freshReply && state.reply.isNotBlank() && !state.working ->
-            GlanceRow(Glyph.Chat, Ice, state.reply, if (large) 1 else 2) { nav.push(Dest.Reply) }
-        notice != null -> GlanceRow(noticeGlyph(notice), noticeTint(notice), notice.where + " · " + noticeLabel(notice), if (large) 1 else 2) { nav.push(Dest.Alerts) }
-        else -> Text(if (state.working) "Puedes seguir hablándome" else "Toca la esfera para hablar", color = Dim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        state.working -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            GlanceRow(Glyph.Chat, Mint, lastSentence(state.speech).ifBlank { "Tú: " + state.question }, lines, width = 108.dp) { nav.push(Dest.Reply) }
+            RoundButton(Glyph.Stop, "Detener", tint = Coral, size = 32.dp) { model.stopTask() }
+        }
+        state.hint.isNotBlank() -> GlanceRow(Glyph.Alert, Amber, state.hint, lines) { model.clearHint() }
+        state.freshReply && state.reply.isNotBlank() -> GlanceRow(Glyph.Chat, Ice, state.reply, lines) { nav.push(Dest.Reply) }
+        notice != null -> GlanceRow(noticeGlyph(notice), noticeTint(notice), notice.where + " · " + noticeLabel(notice), lines) { nav.push(Dest.Alerts) }
+        else -> Text("Toca la esfera para hablar", color = Dim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
-@Composable private fun GlanceRow(glyph: Glyph, tint: Color, text: String, lines: Int, onClick: () -> Unit) {
-    Row(Modifier.widthIn(max = 140.dp).clip(RoundedCornerShape(14.dp)).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 8.dp, vertical = 4.dp),
+@Composable private fun GlanceRow(glyph: Glyph, tint: Color, text: String, lines: Int, width: Dp = 140.dp, onClick: () -> Unit) {
+    Row(Modifier.widthIn(max = width).clip(RoundedCornerShape(14.dp)).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         GlyphIcon(glyph, tint, size = 14.dp)
         Text(text, fontSize = 11.sp, color = Dim, maxLines = lines, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
@@ -199,14 +216,16 @@ private fun sent(model: WatchViewModel) { model.send(); model.hub.scroll["home"]
 }
 
 @Composable internal fun ReplyScreen(state: WatchUi, onSpeak: (String) -> Unit, onTalk: () -> Unit) {
+    // While the agent writes, everything it has said so far; when it ends, its answer.
+    val text = if (state.working) state.speech else state.reply.ifBlank { state.speech }
     ScrollPage("reply") {
         Heading("Tu respuesta", Glyph.Chat)
         if (state.question.isNotBlank()) Note(state.question)
-        Text(state.reply.ifBlank { if (state.working) "Estoy en ello…" else "Pregúntame lo que necesites." }, fontSize = 15.sp, color = Paper, textAlign = TextAlign.Center)
+        Text(text.ifBlank { if (state.working) state.label + "…" else "Pregúntame lo que necesites." }, fontSize = 15.sp, color = Paper, textAlign = TextAlign.Center)
         if (state.updated > 0) Note("Actualizado " + android.text.format.DateFormat.format("HH:mm", state.updated * 1000))
         ErrorText(state.error)
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            if (state.reply.isNotBlank()) RoundButton(Glyph.Speaker, "Escuchar") { onSpeak(state.reply) }
+            if (text.isNotBlank()) RoundButton(if (state.speaking) Glyph.Stop else Glyph.Speaker, if (state.speaking) "Callar" else "Escuchar") { onSpeak(text) }
             RoundButton(Glyph.Mic, "Seguir hablando", onClick = onTalk)
         }
     }

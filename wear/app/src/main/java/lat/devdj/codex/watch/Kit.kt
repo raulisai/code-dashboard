@@ -57,12 +57,15 @@ internal fun Level.color() = when (this) { Level.Good -> Mint; Level.Warn -> Amb
 internal val LocalScrollMemory = compositionLocalOf { HashMap<Any, Int>() }
 
 /** Vertical page with the Wear scroll indicator, rotary crown scrolling and round-screen safe margins. */
-@Composable internal fun ScrollPage(stateKey: Any = Unit, top: Dp = 38.dp, content: @Composable ColumnScope.() -> Unit) {
+@Composable internal fun ScrollPage(stateKey: Any = Unit, top: Dp = 38.dp, backToTop: Any? = null, content: @Composable ColumnScope.() -> Unit) {
     val memory = LocalScrollMemory.current
     val scroll = rememberScrollState(memory[stateKey] ?: 0)
     val focus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
     DisposableEffect(stateKey) { onDispose { memory[stateKey] = scroll.value } }
+    // A new [backToTop] (not the first one seen) brings the page back up, e.g. to watch the answer to a shortcut.
+    var seen by remember { mutableStateOf(backToTop) }
+    LaunchedEffect(backToTop) { if (backToTop != seen) { seen = backToTop; scroll.animateScrollTo(0) } }
     LaunchedEffect(Unit) { focus.requestFocus() }
     ScreenScaffold(scroll, contentPadding = PaddingValues(start = 22.dp, top = top, end = 22.dp, bottom = 34.dp)) { padding ->
         Column(Modifier.fillMaxSize().onRotaryScrollEvent { event -> scope.launch { scroll.scrollBy(event.verticalScrollPixels) }; true }
