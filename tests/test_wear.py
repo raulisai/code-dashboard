@@ -22,6 +22,18 @@ class WearTests(IsolatedConfig, unittest.TestCase):
         session = wear.authenticate(token)
         return token, session
 
+    def test_recent_lists_approvals_first_then_latest_finished_work_newest_first(self):
+        done = lambda name, status, at: {'id': name, 'project': 'alpha', 'provider': 'claude', 'title': name, 'status': status, 'finished_at': at}
+        records = [done('viejo', 'terminado', '2026-10-20 08:00:00 CEST'), done('fallo', 'error', '2026-10-20 09:30:00 CEST'),
+                   done('nuevo', 'terminado', '2026-10-20 10:00:00 CEST'), done('activo', 'working', ''), done('cola', 'espera', '')]
+        rows = wear.recent(records, [{'project': 'beta', 'provider': 'codex'}], limit=4)
+        self.assertEqual([row['kind'] for row in rows], ['approval', 'terminado', 'error', 'terminado'])
+        self.assertEqual([row['title'] for row in rows[1:]], ['nuevo', 'fallo', 'viejo'])
+        self.assertEqual(rows[0]['project'], 'beta')
+        self.assertGreater(rows[1]['at'], rows[2]['at'])
+        self.assertEqual(wear.stamp('sin fecha'), 0)
+        self.assertEqual(wear.recent([done('x', 'terminado', '')], [])[0]['at'], 0)
+
     def test_pair_requires_approval_and_recovers_lost_response_until_first_authenticated_use(self):
         pair = wear.start_pair('ip')
         self.assertEqual(wear.poll_pair(pair['secret']), {'status': 'pending'})
@@ -188,9 +200,12 @@ class WearHttpTests(IsolatedConfig, unittest.IsolatedAsyncioTestCase):
         from cm import projects, quota
         token = await self.linked(); headers = {'Authorization': 'Bearer ' + token}
         self.assertEqual((await self.client.get('/api/wear/view?view=settings')).status, 401)
-        with patch.object(projects, 'snapshot', return_value={'projects': [{'name': 'alpha'}], 'task_records': [], 'approvals': []}):
+        finished = {'id': 't1', 'project': 'alpha', 'provider': 'codex', 'title': 'Actualizar tienda', 'status': 'terminado', 'finished_at': '2026-10-20 10:00:00 CEST'}
+        with patch.object(projects, 'snapshot', return_value={'projects': [{'name': 'alpha'}], 'task_records': [finished], 'approvals': []}):
             home = await (await self.client.get('/api/wear/view?view=home', headers=headers)).json()
             self.assertEqual(home['projects'], 1)
+            self.assertEqual(home['approvals'], 0)
+            self.assertEqual([(row['kind'], row['project'], row['title']) for row in home['recent']], [('terminado', 'alpha', 'Actualizar tienda')])
             catalog = await (await self.client.get('/api/wear/view?view=projects', headers=headers)).json()
             self.assertEqual(catalog['projects'][0]['name'], 'alpha')
         self.assertEqual((await self.client.get('/api/wear/view?view=security', headers=headers)).status, 404)

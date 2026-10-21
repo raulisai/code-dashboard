@@ -127,6 +127,23 @@ def compact_task(task):
     return {key: task.get(key, 'main' if key == 'chat_id' else '') for key in ('id', 'project', 'chat_id', 'title', 'status', 'run_id', 'finished_at')}
 
 
+def stamp(text):
+    """Epoch de una marca `YYYY-MM-DD HH:MM:SS TZ` del servidor (escrita con su propia hora local)."""
+    try: return int(time.mktime(time.strptime(str(text or '')[:19], '%Y-%m-%d %H:%M:%S')))
+    except (ValueError, OverflowError): return 0
+
+
+def recent(records, approvals, limit=6):
+    """Avisos para la pantalla principal del reloj: aprobaciones pendientes y después lo último que terminó o falló."""
+    rows = [{'kind': 'approval', 'project': str(row.get('project', '')), 'provider': str(row.get('provider', '')),
+             'title': 'Pide tu aprobación', 'at': int(time.time())} for row in approvals[:3]]
+    done = [task for task in reversed(records) if task['status'] in ('terminado', 'error')]
+    for task in sorted(done, key=lambda row: stamp(row.get('finished_at')), reverse=True):
+        rows.append({'kind': task['status'], 'project': task['project'], 'provider': task.get('provider', ''),
+                     'title': plain(task.get('title'), 80), 'at': stamp(task.get('finished_at'))})
+    return rows[:limit]
+
+
 def snapshot(session_id):
     records = tasks.task_records()
     own = [task for task in records if task['project'] == config.GENERAL and task.get('chat_id', 'main') == 'main']

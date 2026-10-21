@@ -1,6 +1,8 @@
 # SEMILLA — estado del trabajo en codex-dashboard
 
-Actualización: 20 de octubre de 2026, America/Mexico_City. Codex: Wear OS 0.2 ampliado con Inicio, Proyectos, Configuración y herramientas nativas; backend y Firebase pendientes de activación.
+Actualización: 21 de octubre de 2026. Claude: Wear OS 0.3 con interfaz minimalista (agente general primero, cuota y avisos, gesto de deslizar para volver); sin commit, backend y reloj físico pendientes.
+
+Actualización anterior: 20 de octubre de 2026, America/Mexico_City. Codex: Wear OS 0.2 ampliado con Inicio, Proyectos, Configuración y herramientas nativas; backend y Firebase pendientes de activación.
 
 > Leer antes de trabajar. Actualizar las secciones 0, 4 y 5 al terminar.
 
@@ -9,6 +11,22 @@ Actualización: 20 de octubre de 2026, America/Mexico_City. Codex: Wear OS 0.2 a
 Última actualización: 2026-10-18, 08:50 Europe/Berlin. Autor: Claude (agente general: interfaz viva y más animaciones).
 
 ## 0. Estado en una línea
+
+**Wear OS 0.3: interfaz minimalista y gesto de volver (21 octubre, Claude).** Pedido del
+usuario: lo primero que muestra el reloj es el agente principal (hablar + estado de sus agentes
+de código: cuánto tienen y últimas notificaciones), todo muy visual, con iconos, y con el gesto
+nativo de Wear OS (deslizar de izquierda a derecha) para volver. Hecho en la rama
+`claude/waros-ui-minimalist-redesign-784ff3` (parte de la punta de `Wear-OS`; **sin commit ni
+push**, el usuario no lo ha pedido). Primera pantalla = esfera (tocar = hablar) + estado real +
+dos anillos de cuota (Claude y Codex, ventana de 5 h) + el aviso más reciente o la última
+respuesta; al desplazar: avisos, cuatro iconos (Proyectos, Aprobaciones, Servidor, Ajustes) y
+atajos. **Todas** las pantallas, incluidas las herramientas y la revisión de una acción, se
+cierran deslizando a la derecha viendo la pantalla anterior bajo el dedo; la tecla Atrás hace
+lo mismo. Esto sustituye la decisión de 0.2 de abrir en un Inicio-dashboard. Backend:
+`view=home` añade `recent` y `approvals` (aditivo). APK **0.3.0** probada en el emulador e
+**instalada en el Watch 7 físico** (SM-L300, `install -r`, datos conservados; confirmado
+versionCode 3 y la app abre sin fallos). El backend del reloj sigue sin desplegar, así que
+sigue sin vincular y sin verse con datos reales.
 
 **Bloqueo de vinculación confirmado por HTTPS (21 octubre):** `/health` devuelve 200,
 pero `POST /api/wear/pair/start` devuelve 401 «Sesión expirada: inicia sesión de nuevo».
@@ -345,6 +363,40 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Wear OS 0.3 — interfaz minimalista (21 octubre, Claude)
+
+- **Instalada en el Watch 7 físico (21 octubre, 05:06)** a petición del usuario, solo con
+  `adb -s 192.168.1.74:34563 install -r` (SM-L300; 0.2.0 → 0.3.0, mismo firmante, datos
+  intactos). Tras instalar se abrió la app (arranque en frío correcto, sin fallos en logcat).
+  **Todavía nadie la ha visto en la pantalla del reloj**: al capturar estaba cargando al 8 %
+  y la pantalla de carga de Samsung tapaba la app. Verla con datos reales exige desplegar el
+  backend y vincular. Antes de eso solo se probó en el emulador 432×432 (216 dp), a 192 dp
+  (`wm size 384x384`) y con texto al 130 %. El puerto de ADB por Wi-Fi cambia: descubrirlo con
+  `adb mdns services` (había dos anuncios; solo respondió 34563) y reconectar si queda offline.
+  Para el resto de pruebas usar siempre `-s` con el serial exacto.
+- El backend nuevo (`recent`, `approvals`) debe desplegarse con el del reloj. Sin backend la
+  primera pantalla muestra el estado vacío («Toca la esfera para hablar») y anillos en «–».
+- Criterios míos, no del usuario, fáciles de cambiar en `Models.kt`: anillo verde ≥ 40 %
+  libre, ámbar ≥ 15 %, coral por debajo; «5 horas» = ventana de ≤ 300 min, la otra es la
+  semanal; «Ahora conviene X» = el agente con más cuota de 5 h libre. Mostrar solo: no hay
+  aviso push cuando la cuota baja. Si el CLI de Codex no entrega ventanas, su anillo queda en «–».
+- La edad de los avisos («hace 5 min») sale de `finished_at`, que el servidor escribe como
+  texto en su propia hora local; `wear.stamp` lo interpreta con la zona del servidor. Las
+  aprobaciones pendientes no tienen hora y se muestran como «ahora».
+- El gesto de volver no se pudo medir con un dedo real, solo con toques inyectados (la captura
+  a medio deslizamiento está inspeccionada). La primera pantalla deja el gesto al sistema, que
+  sale de la app: es el comportamiento estándar, no un fallo.
+- La 0.3 no cambia permisos, red ni almacenamiento: mismas rutas `/api/wear/*`, mismo
+  token cifrado. Añade dos lecturas al reanudar la primera pantalla (`view=home` y cuota con
+  su caché de 2 min). Falta medir su efecto en la batería real.
+- Windows: las pruebas del backend suponen Linux (`fcntl`, `termios`). Esta sesión usó stubs
+  fuera del repo y pasan las 21 de `test_wear`; fallan 4 pruebas ajenas de otros módulos
+  (`test_http`, `test_push`, `test_auth_security`, `test_general`) por semántica de Windows
+  (modo 0600, mtime, separadores), no por este cambio: repetir en Linux/CI antes de publicar.
+- Compilar en Windows: Gradle bloquea `~/.gradle` si Android Studio está abierto → usar un
+  `GRADLE_USER_HOME` propio (como hace `tools/build_wear.cmd`); en algunos shells
+  `gradlew.bat` no se encuentra en el directorio actual, llamarlo con ruta absoluta.
 
 ### Bloqueo actual de vinculación — 21 octubre
 
@@ -816,6 +868,39 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Wear OS 0.3 — interfaz minimalista y navegación por gesto (21 octubre, Claude)
+
+- Código en `wear/app/src/main/java/lat/devdj/codex/watch/`. Nuevos: `Icons.kt` (35 iconos de
+  línea dibujados en canvas, sin assets), `Kit.kt` (paleta, `ScrollPage` con indicador de Wear y
+  corona, `Action` fila con icono, `RoundButton`, `QuotaRing`, `Heading`, `Field`), `Orb.kt`,
+  `Nav.kt` (destinos `Dest`, pila `Nav` en el ViewModel, caché `ToolHub` acotada y `Screens`
+  = `SwipeToDismissBox`), `Models.kt` (cuota, avisos, `ago`, `bestAgent`), `Screens.kt`
+  (primera pantalla, Avisos, Cuota, Escribir, Respuesta, Avisos del reloj, Desvincular,
+  Vincular). Reescritos: `MainActivity.kt` (raíz) y `WatchDashboard.kt` (cada vista de
+  herramienta y cada acción a revisar es una pantalla de la **única** pila, por eso el gesto
+  funciona en todas; al volver se pinta al instante la última respuesta y se refresca).
+  `WatchViewModel.kt` carga y guarda cifrados `home` y `quota`; el aviso nuevo se trae al
+  terminar el agente. Sin dependencias nuevas (todo está en Wear Compose Material 3 1.7.1).
+- Decisiones: negro puro; sin `TimeText` (la primera pantalla gana altura); esfera de
+  diámetro adaptable; botones de dictar/enviar arriba del texto; «Volver / Inicio /
+  Actualizar» como tres botones redondos al final de cada herramienta; confirmar una acción
+  la envía desde el ViewModel, así que deslizar atrás a mitad de envío no la cancela; una
+  acción en revisión se cancela sin enviar nada al deslizar. El tap en una notificación push
+  (extra `show_dashboard`) ahora abre Avisos.
+- Backend: `wear.recent` y `wear.stamp` en `cm/wear.py`; `view=home` en `app.py` devuelve
+  además `approvals` (número) y `recent` (hasta 6: aprobaciones y lo último terminado o con
+  error, con `kind`, `project`, `provider`, título ≤ 80, `at`). Pruebas nuevas en
+  `tests/test_wear.py`.
+- Verificación: **21 pruebas del backend de Wear OK** (Windows con stubs), **6 JVM OK**,
+  **17 de interfaz OK en `emulator-5580`** (conversación, primera pantalla con cuota y aviso,
+  Cuota, gesto de volver incluida una captura a medio deslizamiento, avisos, herramientas con
+  revisión/confirmación, reintento sin duplicar, vinculación). Lint: 0 errores, 1 aviso
+  (Firebase 26.0.0 disponible). Capturas inspeccionadas en 216 dp, 192 dp y texto al 130 %
+  (los anillos pasaron a una sola línea tras verlo). Ajustes del emulador restaurados
+  (`wm size reset`, `font_scale 1.0`). Datos de las pruebas = transporte simulado.
+- APK: `%TEMP%\codex-watch-ui-build\outputs\apk\debug\app-debug.apk` (0.3.0, depuración, no
+  versionado). Capturas: `artifacts/wear-ui-20261021/` (ignorado por Git).
 
 ### Diagnóstico HTTPS de vinculación — 21 octubre
 

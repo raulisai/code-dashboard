@@ -264,7 +264,8 @@ async def wear_view(request):
         if view == 'home':
             return wear_reply({'working': [wear.compact_task(t) for t in data['task_records'] if t['status'] == 'working'],
                           'queued': sum(t['status'] == 'espera' for t in data['task_records']),
-                          'projects': len(data['projects']), 'updated_at': int(time.time())})
+                          'projects': len(data['projects']), 'approvals': len(data['approvals']),
+                          'recent': wear.recent(data['task_records'], data['approvals']), 'updated_at': int(time.time())})
         if view == 'projects':
             rows = [{key: row.get(key) for key in ('name', 'description', 'running_containers', 'queued')} for row in data['projects']]
             offset = max(0, query_int(request, 'offset', 0))

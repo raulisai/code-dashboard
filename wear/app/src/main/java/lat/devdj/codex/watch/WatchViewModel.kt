@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +22,9 @@ data class WatchUi(
     val draft: String = "", val pending: Boolean = false, val busy: Boolean = false,
     val error: String = "", val mode: String = "attention", val pushReady: Boolean = false,
     val freshReply: Boolean = false,
+    val notices: List<Notice> = emptyList(), val approvals: Int = 0,
+    val claude: ProviderQuota? = null, val codex: ProviderQuota? = null,
+    val quotaLoaded: Boolean = false, val quotaStale: Boolean = false,
     val origin: String = "https://codex-dashboard.devdj.lat",
 ) {
     val working get() = state in setOf("working", "queued")
@@ -52,8 +56,17 @@ class WatchViewModel @JvmOverloads constructor(application: Application, injecte
     private val network = Mutex()
     private var draftJob: Job? = null
     private var generalVisible = false
+    private var quotaAt = 0L
+    val nav = Nav()
+    val hub = ToolHub()
     fun generalVisible(value: Boolean) { generalVisible = value }
-    init { if (mutable.value.linked) store.json("snapshot")?.let { applySnapshot(it) } }
+    init {
+        if (mutable.value.linked) {
+            store.json("snapshot")?.let { applySnapshot(it) }
+            store.json("home")?.let { applyHome(it) }
+            store.json("quota")?.let { applyQuota(it, stale = true) }
+        }
+    }
     private fun change(update: (WatchUi) -> WatchUi) { mutable.value = update(mutable.value) }
     private fun failure(error: Exception) {
         if (error is CancellationException) throw error
@@ -76,6 +89,31 @@ class WatchViewModel @JvmOverloads constructor(application: Application, injecte
             updated = data.optLong("updated_at"), mode = data.optString("notifications", "attention")) }
         data.optJSONObject("firebase")?.let { store.write("firebase", it.toString()) }
     }
+    private fun applyHome(data: JSONObject) = change { it.copy(notices = parseNotices(data.optJSONArray("recent")), approvals = data.optInt("approvals")) }
+    private fun applyQuota(data: JSONObject, stale: Boolean) = change {
+        it.copy(claude = parseQuota(data.optJSONObject("claude")), codex = parseQuota(data.optJSONObject("codex")),
+            quotaLoaded = true, quotaStale = stale || data.optBoolean("stale"))
+    }
+    /** Latest notices and pending approvals. Failures keep what is on screen; a revoked session is handled by [dashboardCall]. */
+    suspend fun loadHome() {
+        if (!ui.value.linked) return
+        try { val data = dashboardCall("/api/wear/view?view=home"); store.write("home", data.toString()); applyHome(data) }
+        catch (error: Exception) { if (error is CancellationException) throw error }
+    }
+    /** What the coding agents have left. The server caches it for two minutes, so a minute here is plenty. */
+    suspend fun loadQuota(force: Boolean = false) {
+        if (!ui.value.linked || (!force && ui.value.quotaLoaded && System.currentTimeMillis() - quotaAt < 60000)) return
+        try {
+            val data = dashboardCall("/api/wear/view?view=quota" + if (force) "&refresh=1" else "")
+            quotaAt = System.currentTimeMillis(); store.write("quota", data.toString()); applyQuota(data, false)
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            change { it.copy(quotaLoaded = true, quotaStale = true) }
+        }
+    }
+    suspend fun refreshAll() = coroutineScope {
+        launch { refresh() }; launch { loadHome() }; launch { loadQuota(true) }
+    }
     suspend fun refresh() = network.withLock {
         if (!ui.value.linked) return@withLock
         try {
@@ -85,8 +123,8 @@ class WatchViewModel @JvmOverloads constructor(application: Application, injecte
         } catch (error: Exception) { failure(error) }
     }
     /** Called only from repeatOnLifecycle(RESUMED); no background socket, timer or service. */
-    suspend fun foreground() {
-        if (ui.value.linked) refresh()
+    suspend fun foreground() = coroutineScope {
+        if (ui.value.linked) { launch { loadHome() }; launch { loadQuota() }; refresh() }
         else if (store.read("pair_secret").isBlank() || ui.value.expires <= System.currentTimeMillis() / 1000) network.withLock { startPair() }
         var failures = 0
         while (true) {
@@ -94,11 +132,14 @@ class WatchViewModel @JvmOverloads constructor(application: Application, injecte
             if (!ui.value.linked) {
                 if (store.read("pair_secret").isNotBlank()) {
                     network.withLock { pollPair() }
-                    if (ui.value.linked) refresh()
+                    if (ui.value.linked) { launch { loadHome() }; launch { loadQuota() }; refresh() }
                 }
             } else if (ui.value.working && generalVisible) {
                 if (ui.value.error.isNotBlank()) failures++ else failures = 0
+                val before = ui.value.working
                 if (failures < 3) refresh()
+                // The agent just finished: the newest notice is what the first screen should show now.
+                if (before && !ui.value.working) launch { loadHome() }
             }
         }
     }
