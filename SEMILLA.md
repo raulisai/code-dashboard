@@ -10,6 +10,11 @@ Actualización: 20 de octubre de 2026, America/Mexico_City. Codex: Wear OS 0.2 a
 
 ## 0. Estado en una línea
 
+**Bloqueo de vinculación confirmado por HTTPS (21 octubre):** `/health` devuelve 200,
+pero `POST /api/wear/pair/start` devuelve 401 «Sesión expirada: inicia sesión de nuevo».
+Está pasando por la autenticación web anterior, en vez de la ruta pública de vinculación.
+Hace falta desplegar el backend/frontend de Wear-OS; copiar Firebase no publica ese código.
+
 **Watch 7 físico: app 0.2 instalada y abierta (21 octubre, Codex).** El usuario autorizó
 comenzar las pruebas físicas. ADB por Wi-Fi identificó SM-L300/API 36; instalación del APK
 `codex-watch-dashboard-0.2.0.apk` completada con Success y MainActivity abrió correctamente.
@@ -340,6 +345,15 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Bloqueo actual de vinculación — 21 octubre
+
+- El Watch instalado muestra «Preparando vínculo» y «Actualiza el dashboard del servidor».
+  Prueba HTTPS local confirmó 401 en POST `/api/wear/pair/start`; no es un fallo del JSON
+  de Firebase. Desplegar rama Wear-OS, reconstruir solo dashboard y exigir HTTP 200 en
+  ese POST sin sesión. Después generar otro código y autorizarlo en `/watch` con MFA.
+- No alterar ni quitar autenticación global para resolverlo: las rutas start/poll ya están
+  declaradas públicas y protegidas por secreto temporal/límites en el código de Wear-OS.
 
 ### Inicio de pruebas físicas — 21 octubre
 
@@ -802,6 +816,14 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Diagnóstico HTTPS de vinculación — 21 octubre
+
+- Peticiones desde este equipo con Java HttpClient y TLS validado: GET `/health` 200;
+  GET `/api/wear/state` 401 con el mensaje web anterior; POST `/api/wear/pair/start`
+  con JSON vacío 401 y el mismo mensaje. La respuesta correcta de start es 200 sin cookie.
+- Se informó al usuario para que su agente del VPS publique el código de Wear-OS. No se
+  deshabilitó MFA ni se cambiaron rutas o credenciales del servidor desde este equipo.
 
 ### Instalación en Galaxy Watch 7 — 21 octubre, Codex
 
