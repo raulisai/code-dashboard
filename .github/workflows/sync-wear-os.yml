@@ -1,0 +1,66 @@
+name: Sync main into Wear-OS
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-main-into-wear-os
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Wear-OS with complete history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: Wear-OS
+          fetch-depth: 0
+          clean: false
+
+      - name: Merge the latest main without rewriting history
+        id: merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main Wear-OS
+          if git merge-base --is-ancestor origin/main HEAD; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'Wear-OS already includes main.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if ! git merge --no-edit origin/main; then
+            git diff --name-only --diff-filter=U >> "$GITHUB_STEP_SUMMARY"
+            echo '::error::Conflictos al incorporar main. Resolver en Wear-OS conservando ambas implementaciones.'
+            exit 1
+          fi
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+
+      - name: Validate backend integration before publishing
+        if: steps.merge.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/wear-sync-venv"
+          "$RUNNER_TEMP/wear-sync-venv/bin/python" -m pip install -r requirements.txt
+          PYTHONPATH=.:tests "$RUNNER_TEMP/wear-sync-venv/bin/python" -m unittest \
+            test_wear test_general test_auth_security test_http test_push test_chats test_availability
+
+      - name: Publish the merge without force push
+        if: steps.merge.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin HEAD:refs/heads/Wear-OS
+          echo 'Wear-OS synchronized with main; backend checks passed.' >> "$GITHUB_STEP_SUMMARY"
+
