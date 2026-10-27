@@ -1,5 +1,10 @@
 # SEMILLA — estado del trabajo en codex-dashboard
 
+Actualización consolidada: 27 de octubre de 2026. Wear OS 0.4 y conector de equipos
+integrados y publicados en Wear-OS, incluyendo todo main. 264 pruebas aprobadas,
+APK nuevo compilado y lint sin errores. VPS: vinculación de reloj disponible;
+conector y últimas mejoras de voz requieren actualización y aceptación reales.
+
 Actualización: 27 de octubre de 2026, America/Mexico_City. Conector de equipos locales implementado y probado; sin despliegue VPS ni vínculo real.
 
 Actualización: 20 de octubre de 2026, America/Mexico_City. Codex: Wear OS 0.2 ampliado con Inicio, Proyectos, Configuración y herramientas nativas; backend y Firebase pendientes de activación.
@@ -21,7 +26,7 @@ Actualización anterior: 20 de octubre de 2026, America/Mexico_City. Codex: Wear
 **Integración del repositorio revisada (27 octubre, Codex):** reunidas las dos ramas
 locales que no estaban en GitHub: Wear OS 0.4 (`f58b1b8`, `d62d4cd`) y conector de
 equipos (`39012f3`, `586a721`, `a511b06`). Rama de integración:
-`codex/integration-wear-20261027`, destinada a actualizar Wear-OS. Código combinado sin
+`codex/integration-wear-20261027`, publicada en Wear-OS. Código combinado sin
 conflictos; SEMILLA conserva las notas de ambas ramas. Backend completo: 212 pruebas OK;
 frontend: 24 pruebas y build OK. Ver `deploy/ESTADO-INTEGRACION.md`.
 
