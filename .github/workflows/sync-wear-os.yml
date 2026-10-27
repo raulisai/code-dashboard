@@ -54,7 +54,7 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/wear-sync-venv"
           "$RUNNER_TEMP/wear-sync-venv/bin/python" -m pip install -r requirements.txt
           PYTHONPATH=.:tests "$RUNNER_TEMP/wear-sync-venv/bin/python" -m unittest \
-            test_wear test_general test_auth_security test_http test_push test_chats test_availability
+            test_wear test_workstations test_general test_auth_security test_http test_push test_chats test_availability
 
       - name: Publish the merge without force push
         if: steps.merge.outputs.changed == 'true'
