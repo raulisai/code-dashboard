@@ -12,6 +12,8 @@ Actualización: 20 de octubre de 2026, America/Mexico_City. Codex: Wear OS 0.2 a
 
 ## 0. Estado en una línea
 
+**Carpeta base y proyectos nuevos (27 octubre, Codex):** el usuario pidió buscar por nombre en una carpeta local como `F:\proyectos`, crear si falta y poder pedir Nuevo explícitamente. Implementado en cliente Windows y API/web: modos auto/existing/new, alcance de equipo para nombres de carpeta y límites locales; sin sobrescribir carpetas existentes, escapes por enlaces ni rutas remotas. Se actualiza el paquete de despliegue; aún sin publicar el VPS.
+
 **Conector Code Dashboard → Estado IA (27 octubre, Codex):** rama `codex/workstation-connector`. Cola HTTPS saliente para desarrollar en esta PC Windows, con vinculación web MFA, credencial de equipo revocable, aprobación local por defecto, proyectos autorizados y ejecución en worktrees. UI en Cola, SQLite separado y pruebas de seguridad/integración. **Solo implementado localmente; no publicado ni conectado al VPS.** Guía y mensaje para el agente del servidor: `deploy/CONECTOR-EQUIPOS.md`. El usuario confirmó la URL existente y quiere gestionar la vinculación desde la web; no proporcionó acceso SSH.
 
 **Bloqueo de vinculación confirmado por HTTPS (21 octubre):** `/health` devuelve 200,
@@ -349,6 +351,8 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+- La actualización del conector debe incluir también `project_mode` y la selección por carpeta base. El paquete v2 es acumulativo e incluye el conector inicial; no basta desplegar únicamente el primer parche. La ruta base se selecciona en Windows y no se configura desde el servidor.
 
 ### Conector de equipos — 27 octubre
 
@@ -827,6 +831,11 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Selección por carpeta base — 27 octubre
+
+- Modos automáticos/existente/nuevo e identificadores con guiones bajos. Capacidad de carpeta base anunciada por el cliente y alcance por nombres configurable al vincular el equipo. Compatibilidad con clientes anteriores y migración transaccional aditiva de `jobs.project_mode`.
+- Pruebas de creación real de repos y visibilidad del código nuevo, pruebas detectadas después de generación, rechazo de colisiones/ambigüedad/rutas externas/nombres reservados y conservación de carpetas existentes. La prueba de enlace HTTPS incluye un segundo trabajo de creación desde cero; no usa proyectos ni cuentas reales.
 
 ### Conector de equipos — 27 octubre
 

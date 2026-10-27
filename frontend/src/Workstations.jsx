@@ -9,6 +9,7 @@ export default function Workstations() {
   const [data, setData] = useState({devices: [], jobs: []});
   const [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const [label, setLabel] = useState('Mi PC Windows'), [projects, setProjects] = useState('');
+  const [rootProjects, setRootProjects] = useState(true), [projectMode, setProjectMode] = useState('auto');
   const [pair, setPair] = useState(null), [device, setDevice] = useState('');
   const [project, setProject] = useState(''), [provider, setProvider] = useState('claude'), [prompt, setPrompt] = useState('');
   const [requestKey, setRequestKey] = useState(() => crypto.randomUUID());
@@ -29,21 +30,23 @@ export default function Workstations() {
     <p className="muted">Envía tareas a Estado IA para usar las herramientas instaladas en ese equipo, como Android Studio. El equipo recibe la cola mediante HTTPS y decide qué proyectos permite ejecutar.</p>
     {error && <p className="form-error" role="alert">{error}</p>}
     <details><summary>Vincular una computadora</summary>
-      <form onSubmit={async event => {event.preventDefault(); const result = await act({action: 'enroll', label, projects: projects.split(/[\n,]/).map(p => p.trim()).filter(Boolean)}); if (result) setPair(result);}}>
+      <form onSubmit={async event => {event.preventDefault(); const result = await act({action: 'enroll', label, projects: rootProjects ? ['*'] : projects.split(/[\n,]/).map(p => p.trim()).filter(Boolean)}); if (result) setPair(result);}}>
         <label className="field"><span>Nombre del equipo</span><input className="input" required maxLength={80} value={label} onChange={e => setLabel(e.target.value)}/></label>
-        <label className="field"><span>Identificadores de proyectos autorizados (uno por línea)</span><textarea className="input" required rows={3} value={projects} onChange={e => setProjects(e.target.value)} placeholder="mi-app-android"/></label>
-        <p className="muted">Estos identificadores se asociarán a carpetas locales desde Estado IA. Solo letras minúsculas, números y guiones.</p>
+        <label className="field"><span><input type="checkbox" checked={rootProjects} onChange={e => setRootProjects(e.target.checked)}/>Permitir proyectos por nombre dentro de la carpeta base del equipo</span></label>
+        {!rootProjects && <label className="field"><span>Identificadores autorizados (uno por línea)</span><textarea className="input" required rows={3} value={projects} onChange={e => setProjects(e.target.value)} placeholder="mi-app-android"/></label>}
+        <p className="muted">La carpeta base y el permiso para crear proyectos se eligen en Estado IA. La web solo envía nombres, nunca rutas de disco.</p>
         <button className="btn" disabled={busy}>Generar código de 10 minutos</button>
       </form>
       {pair && <div role="status"><p>Copia este código en Estado IA → Conector. Trátalo como una credencial; se muestra solo aquí.</p><code style={{overflowWrap: 'anywhere'}}>{pair.code}</code><p><button className="btn small" onClick={() => setPair(null)}>Ocultar código</button></p></div>}
     </details>
     <div className="task-list">{data.devices.map(d => <div className="task-row" key={d.id}>
-      <Monitor size={22}/><div className="task-main"><b>{d.label}</b><small>{d.revoked ? 'Revocado' : d.online ? 'En línea' : d.paired ? 'Sin conexión' : 'Pendiente de vínculo'} · {d.projects.join(', ')}</small></div>
+      <Monitor size={22}/><div className="task-main"><b>{d.label}</b><small>{d.revoked ? 'Revocado' : d.online ? 'En línea' : d.paired ? 'Sin conexión' : 'Pendiente de vínculo'} · {d.projects.includes('*') ? 'Proyectos por nombre en carpeta base' : d.projects.join(', ')}</small></div>
       {!d.revoked && <button className="btn small danger" disabled={busy} onClick={() => {if (window.confirm(`¿Revocar el acceso de ${d.label}? También se cancelará su cola.`)) act({action: 'revoke', device: d.id}, 'Equipo revocado');}}>Revocar</button>}
     </div>)}</div>
-    <form onSubmit={async event => {event.preventDefault(); const result = await act({action: 'enqueue', device, project, provider, prompt, request_key: requestKey}, 'Tarea enviada al equipo'); if (result) {setPrompt(''); setRequestKey(crypto.randomUUID());}}}>
+    <form onSubmit={async event => {event.preventDefault(); const result = await act({action: 'enqueue', device, project, project_mode: projectMode, provider, prompt, request_key: requestKey}, 'Tarea enviada al equipo'); if (result) {setPrompt(''); setRequestKey(crypto.randomUUID());}}}>
       <label className="field"><span>Computadora de destino</span><select className="select" required value={device} onChange={e => {setDevice(e.target.value); setProject(''); setRequestKey(crypto.randomUUID());}}><option value="">Selecciona equipo</option>{data.devices.filter(d => d.paired && !d.revoked).map(d => <option key={d.id} value={d.id}>{d.label}</option>)}</select></label>
-      <label className="field"><span>Proyecto local autorizado</span><select className="select" required value={project} onChange={e => {setProject(e.target.value); setRequestKey(crypto.randomUUID());}}><option value="">Selecciona proyecto</option>{(selected?.projects || []).map(p => <option key={p}>{p}</option>)}</select></label>
+      <label className="field"><span>Nombre del proyecto</span>{selected?.projects.includes('*') ? <input className="input" required maxLength={40} pattern="[a-z0-9]([a-z0-9_-]{0,38}[a-z0-9])?" placeholder="mi-app-android" value={project} onChange={e => {setProject(e.target.value); setRequestKey(crypto.randomUUID());}}/> : <select className="select" required value={project} onChange={e => {setProject(e.target.value); setRequestKey(crypto.randomUUID());}}><option value="">Selecciona proyecto</option>{(selected?.projects || []).map(p => <option key={p}>{p}</option>)}</select>}</label>
+      <label className="field"><span>Cómo abrir el proyecto</span><select className="select" value={projectMode} onChange={e => {setProjectMode(e.target.value); setRequestKey(crypto.randomUUID());}}><option value="auto">Buscar y, si no existe, crear</option><option value="existing">Trabajar solo en un proyecto existente</option><option value="new">Crear un proyecto nuevo (sin reutilizar carpetas)</option></select></label>
       <label className="field"><span>Agente</span><select className="select" value={provider} onChange={e => {setProvider(e.target.value); setRequestKey(crypto.randomUUID());}}><option value="claude">Claude Code</option><option value="codex">Codex</option></select></label>
       <label className="field"><span>Tarea para esta computadora</span><textarea className="input" required rows={4} maxLength={20000} value={prompt} onChange={e => {setPrompt(e.target.value); setRequestKey(crypto.randomUUID());}} placeholder="Implementa la pantalla de inicio y comprueba la compilación Android con las herramientas locales autorizadas."/></label>
       <button className="btn primary" disabled={busy || !device || !project || !prompt.trim()}><ShieldCheck size={16}/>Enviar al equipo</button>
@@ -51,7 +54,7 @@ export default function Workstations() {
     <h3>Cola e informes de equipos</h3>
     {!data.jobs.length && <p className="muted">Todavía no hay tareas remotas.</p>}
     {data.jobs.map(job => <details key={job.id} className="block">
-      <summary>{labels[job.status] || job.status} · {job.project} · {job.provider}{job.cancel && job.status === 'running' ? ' · Cancelación solicitada' : ''}</summary>
+      <summary>{labels[job.status] || job.status} · {job.project} · {job.provider} · {{auto: 'buscar o crear', existing: 'existente', new: 'nuevo'}[job.project_mode || 'auto']}{job.cancel && job.status === 'running' ? ' · Cancelación solicitada' : ''}</summary>
       <p style={{whiteSpace: 'pre-wrap', overflowWrap: 'anywhere'}}>{job.prompt}</p>
       <p className="muted">{data.devices.find(d => d.id === job.device)?.label || job.device}</p>
       {job.result?.summary && <pre style={{whiteSpace: 'pre-wrap', overflowWrap: 'anywhere'}}>{job.result.summary}</pre>}

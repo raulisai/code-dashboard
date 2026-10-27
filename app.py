@@ -901,7 +901,7 @@ async def workstation_admin(request):
         return reply(await blocking(workstations.revoke, data.get('device')))
     if action == 'enqueue':
         return reply(await blocking(workstations.enqueue, data.get('device'), data.get('project'),
-                                   data.get('provider'), data.get('prompt'), data.get('request_key')), 201)
+                                   data.get('provider'), data.get('prompt'), data.get('request_key'), data.get('project_mode', 'auto')), 201)
     if action == 'cancel':
         return reply(await blocking(workstations.cancel, data.get('job')))
     return fail('Acción de equipo inválida')
@@ -913,7 +913,7 @@ async def workstation_native(request):
         return reply(await blocking(workstations.enroll, data.get('code'), data.get('token')))
     token = request.headers.get('Authorization', '').removeprefix('Bearer ')
     if request.path.endswith('/poll'):
-        return reply(await blocking(workstations.poll, token, data.get('projects')))
+        return reply(await blocking(workstations.poll, token, data.get('projects'), data.get('accept_root_projects', False), data.get('project_modes', False)))
     if request.path.endswith('/heartbeat'):
         return reply(await blocking(workstations.heartbeat, token, data.get('job'), data.get('lease')))
     return reply(await blocking(workstations.finish, token, data.get('job'), data.get('lease'), data.get('result')))

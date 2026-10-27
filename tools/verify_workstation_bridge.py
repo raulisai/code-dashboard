@@ -126,9 +126,28 @@ async def verify(desktop):
                 assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=project).decode().strip() == initial
                 assert not (project / 'feature.py').exists()
                 assert not util.read_json(worker.journal)
+                projects_root = root / 'local-projects'
+                projects_root.mkdir()
+                enrollment2 = workstations.create_enrollment('PC con carpeta base', ['*'])
+                pair2 = await asyncio.to_thread(connector.pair, url, enrollment2['code'])
+                util.write_json_atomic(connector.settings_path(), {**connector.DEFAULTS, 'server': url,
+                    'projects': {}, 'projects_root': str(projects_root), 'max_minutes': 1})
+                worker.options = connector.load_settings()
+                worker.device_id = pair2['device_id']
+                worker.transport = connector.Transport(url, connector.load_secret(url)['token'])
+                new_job = workstations.enqueue(pair2['device_id'], 'nueva-app', 'claude',
+                    'Crea una aplicación nueva con feature', 'integration-key-0002', 'new')
+                claim = await asyncio.to_thread(worker.transport.request, 'poll', {
+                    'projects': [], 'accept_root_projects': True, 'project_modes': True})
+                await asyncio.to_thread(worker.perform, claim['job'])
+                new_result = next(j for j in workstations.overview()['jobs'] if j['id'] == new_job['id'])
+                assert new_result['status'] == 'completed', new_result
+                assert (projects_root / 'nueva-app/feature.py').is_file()
+                assert approvals == [job['id'], new_job['id']]
                 print(json.dumps({'https': 'verified', 'local_approvals': len(approvals), 'job': 'completed',
                     'branch': records[0]['result']['branch'], 'validation': records[0]['result']['validation'],
-                    'working_copy': 'unchanged', 'outbox': 'acknowledged'}, ensure_ascii=False, indent=2))
+                    'working_copy': 'unchanged', 'outbox': 'acknowledged',
+                    'new_project': 'created inside local root, code visible'}, ensure_ascii=False, indent=2))
             finally:
                 await server.close()
 

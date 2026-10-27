@@ -105,6 +105,31 @@ class WorkstationTests(IsolatedConfig, unittest.TestCase):
                        {'status': 'completed', 'token': 'no'}, {'status': 'running'}):
             with self.assertRaises(auth.AuthError): ws.finish(token, job['id'], job['lease'], result)
 
+    def test_root_scope_requires_local_root_capability_and_preserves_mode(self):
+        _, token, device = self.device(['*'])
+        new = ws.enqueue(device, 'new_android', 'claude', 'Crea la aplicación', 'root-scope-key-0001', 'new')
+        self.assertIsNone(ws.poll(token, [])['job'])
+        job = ws.poll(token, [], True)['job']
+        self.assertEqual(job['id'], new['id'])
+        self.assertEqual(job['project_mode'], 'new')
+        with self.assertRaises(auth.AuthError):
+            ws.enqueue(device, 'new_android', 'claude', 'Crea la aplicación', 'root-scope-key-0001', 'existing')
+        with self.assertRaises(auth.AuthError):
+            ws.enqueue(device, '../escape', 'claude', 'Tarea', 'root-scope-key-0002')
+
+    def test_root_capability_does_not_expand_server_allowlist(self):
+        _, token, device = self.device(['alpha'])
+        with self.assertRaises(auth.AuthError): ws.enqueue(device, 'other', 'claude', 'Tarea', 'root-scope-key-0001')
+        job = self.enqueue(device)
+        self.assertEqual(ws.poll(token, [], True)['job']['id'], job['id'])
+
+    def test_legacy_clients_do_not_receive_new_project_modes(self):
+        _, token, device = self.device()
+        ws.enqueue(device, 'alpha', 'claude', 'Tarea', 'root-scope-key-0001', 'new')
+        self.assertIsNone(ws.poll(token, ['alpha'])['job'])
+        job = ws.poll(token, ['alpha'], project_modes=True)['job']
+        self.assertEqual(job['project_mode'], 'new')
+
 
 class WorkstationHTTPTests(IsolatedConfig, unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

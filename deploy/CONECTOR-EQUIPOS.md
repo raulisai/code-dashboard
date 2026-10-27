@@ -17,14 +17,20 @@ El cambio es aditivo: `CONFIG_DIR/workstations.sqlite3`, con permisos 600 y crea
 ## Vinculación por web, después del despliegue
 
 1. Entra al dashboard con contraseña y TOTP. Abre **Cola → Desarrollar en otra computadora → Vincular una computadora**.
-2. Escribe el nombre de la PC y los identificadores permitidos, por ejemplo `mi-app-android`. Pueden ser nuevos para repos que solo existen en la PC; no necesitan una carpeta en el VPS.
+2. Escribe el nombre de la PC y permite proyectos por nombre en la carpeta base, o restringe una lista de identificadores. No necesitan una carpeta en el VPS.
 3. Genera el código de 10 minutos. Se muestra en esa pantalla y no se guarda en el almacenamiento del navegador. No lo pegues en chats ni logs.
 4. En Estado IA abre **Conector**, introduce `https://codex-dashboard.devdj.lat` y el código y pulsa **Vincular equipo**.
-5. Configura y guarda la carpeta Git en **Proyectos**. En **Conector → Asociar proyecto**, relaciona `mi-app-android` con ese proyecto local. El servidor nunca decide la ruta de disco.
+5. En **Conector → Carpeta base**, selecciona la carpeta local de proyectos, por ejemplo `F:\proyectos`. No hay que registrar cada carpeta. Las asociaciones locales siguen disponibles para nombres distintos o reglas específicas. El servidor nunca decide la ruta de disco.
 6. Guarda la conexión y pulsa **Recibir tareas**. La recepción no se activa automáticamente al abrir la app.
 7. En la web selecciona computadora, proyecto y agente, escribe la tarea y envíala. En Windows revisa el texto y pulsa **Aprobar esta tarea**. La ejecución sin revisión es opcional y se limita a proyectos y agentes seleccionados localmente.
 
 La cola remota se muestra junto a la del VPS, pero usa almacenamiento y ejecución separados. Una tarea remota no puede caer en el scheduler del servidor.
+
+## Proyectos existentes y nuevos
+
+La web permite **Buscar y crear si falta**, **Solo existente** y **Nuevo**. Se buscan carpetas del primer nivel dentro de la base local, normalizando mayúsculas, guiones y guiones bajos. Las coincidencias ambiguas se rechazan. Nuevo nunca reutiliza una carpeta ni una asociación existente; si falta la carpeta y la PC permite crear, inicializa un repositorio Git nuevo. El código terminado queda visible en la carpeta recién creada, sobre la rama generada. Los proyectos existentes conservan su copia de trabajo intacta. No se convierten automáticamente carpetas existentes sin Git ni se siguen enlaces/junctions fuera de la base.
+
+El alcance de dispositivo `*` significa proyectos por nombre, siempre sujeto a la carpeta base y la autorización local. No es una ruta ni acceso a todo el disco. La cola solo entrega esos nombres si el cliente anuncia la capacidad de carpeta base; los clientes anteriores continúan recibiendo tareas automáticas para sus asociaciones, sin campos desconocidos. SQLite añade de forma transaccional `jobs.project_mode` con valor anterior `auto`; el despliegue debe respaldar la base antes de actualizar.
 
 ## Seguridad y recuperación
 

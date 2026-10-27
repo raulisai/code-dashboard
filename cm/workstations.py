@@ -21,6 +21,7 @@ NATIVE_PATHS = {'/api/workstation/poll', '/api/workstation/heartbeat', '/api/wor
 LEASE_SECONDS = 120
 TOKEN_SECONDS = 90 * 86400
 MAX_PROMPT = 20000
+PROJECT_ID = r'[a-z0-9](?:[a-z0-9_-]{0,38}[a-z0-9])?'
 
 
 def reject(message, status=400):
@@ -58,11 +59,13 @@ def database():
             provider TEXT NOT NULL, prompt TEXT NOT NULL, status TEXT NOT NULL,
             created REAL NOT NULL, updated REAL NOT NULL, lease TEXT DEFAULT '',
             lease_until REAL DEFAULT 0, cancel INTEGER DEFAULT 0,
-            result TEXT DEFAULT '{}', request_key TEXT NOT NULL,
+            result TEXT DEFAULT '{}', request_key TEXT NOT NULL, project_mode TEXT NOT NULL DEFAULT 'auto',
             UNIQUE(device, request_key));
           CREATE INDEX IF NOT EXISTS device_jobs ON jobs(device,status,created);
         ''')
         db.execute('BEGIN IMMEDIATE')
+        if 'project_mode' not in {row['name'] for row in db.execute('PRAGMA table_info(jobs)')}:
+            db.execute("ALTER TABLE jobs ADD COLUMN project_mode TEXT NOT NULL DEFAULT 'auto'")
         yield db
         db.commit()
     finally:
@@ -78,7 +81,7 @@ def create_enrollment(label, project_names):
     if not isinstance(label, str) or not 1 <= len(label.strip()) <= 80:
         reject('Escribe un nombre de equipo de hasta 80 caracteres')
     if (not isinstance(project_names, list) or not 1 <= len(project_names) <= 50
-            or any(not isinstance(p, str) or not re.fullmatch(config.PROJECT_NAME, p) for p in project_names)):
+            or any(not isinstance(p, str) or p != '*' and not re.fullmatch(PROJECT_ID, p) for p in project_names)):
         reject('Selecciona entre 1 y 50 proyectos válidos')
     code = secrets.token_urlsafe(32)
     device = uuid.uuid4().hex
@@ -135,14 +138,18 @@ def overview():
                             'paired': bool(row['token_hash']), 'expires': row['token_expires'],
                             'online': bool(row['token_hash'] and not row['revoked'] and row['token_expires'] > time.time()
                                            and row['seen'] > time.time() - 90)})
-        jobs = [{k: row[k] for k in ('id', 'device', 'project', 'provider', 'prompt', 'status', 'created', 'updated', 'cancel')}
+        jobs = [{k: row[k] for k in ('id', 'device', 'project', 'provider', 'prompt', 'project_mode', 'status', 'created', 'updated', 'cancel')}
                 | {'result': json.loads(row['result'])}
                 for row in db.execute('SELECT * FROM jobs ORDER BY created DESC LIMIT 100')]
         return {'devices': devices, 'jobs': jobs}
 
 
-def enqueue(device, project, provider, prompt, request_key):
+def enqueue(device, project, provider, prompt, request_key, project_mode='auto'):
     identifier(device)
+    if not isinstance(project, str) or not re.fullmatch(PROJECT_ID, project):
+        reject('Nombre de proyecto inválido')
+    if project_mode not in ('auto', 'existing', 'new'):
+        reject('Modo de proyecto inválido')
     if provider not in config.PROVIDERS:
         reject('Agente inválido')
     if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= MAX_PROMPT:
@@ -153,22 +160,26 @@ def enqueue(device, project, provider, prompt, request_key):
         row = db.execute('SELECT * FROM devices WHERE id=?', (device,)).fetchone()
         if not row or row['revoked'] or not row['token_hash'] or row['token_expires'] <= time.time():
             reject('El equipo no está vinculado o su credencial venció', 409)
-        if project not in json.loads(row['projects']):
+        authorized = json.loads(row['projects'])
+        if project not in authorized and '*' not in authorized:
             reject('Proyecto no autorizado para este equipo', 403)
         existing = db.execute('SELECT * FROM jobs WHERE device=? AND request_key=?', (device, request_key)).fetchone()
         if existing:
-            if (existing['project'], existing['provider'], existing['prompt']) != (project, provider, prompt.strip()):
+            if (existing['project'], existing['provider'], existing['prompt'], existing['project_mode']) != (project, provider, prompt.strip(), project_mode):
                 reject('La clave de idempotencia ya pertenece a otra tarea', 409)
             return {'id': existing['id'], 'status': existing['status']}
         if db.execute("SELECT COUNT(*) FROM jobs WHERE device=? AND status IN ('queued','running')", (device,)).fetchone()[0] >= 100:
             reject('La cola de este equipo está llena', 429)
         job = uuid.uuid4().hex
-        db.execute('INSERT INTO jobs (id,device,project,provider,prompt,status,created,updated,request_key) VALUES (?,?,?,?,?,?,?,?,?)',
-                   (job, device, project, provider, prompt.strip(), 'queued', time.time(), time.time(), request_key))
+        db.execute('INSERT INTO jobs (id,device,project,provider,prompt,status,created,updated,request_key,project_mode) VALUES (?,?,?,?,?,?,?,?,?,?)',
+                   (job, device, project, provider, prompt.strip(), 'queued', time.time(), time.time(), request_key, project_mode))
         return {'id': job, 'status': 'queued'}
 
 
-def poll(token, projects):
+def poll(token, projects, accept_root_projects=False, project_modes=False):
+    if not isinstance(accept_root_projects, bool) or not isinstance(project_modes, bool):
+        reject('La capacidad de carpeta base debe ser true o false')
+    project_modes = project_modes or accept_root_projects
     if not isinstance(projects, list) or len(projects) > 50 or any(not isinstance(p, str) for p in projects):
         reject('Lista de proyectos inválida')
     with database() as db:
@@ -177,15 +188,18 @@ def poll(token, projects):
         db.execute('UPDATE devices SET seen=? WHERE id=?', (time.time(), device['id']))
         if db.execute("SELECT 1 FROM jobs WHERE device=? AND status='running'", (device['id'],)).fetchone():
             return {'job': None}
-        allowed = set(projects) & set(json.loads(device['projects']))
+        scope = set(json.loads(device['projects']))
+        allowed = scope if accept_root_projects else set(projects) if '*' in scope else set(projects) & scope
         row = next((row for row in db.execute("SELECT * FROM jobs WHERE device=? AND status='queued' ORDER BY created", (device['id'],))
-                    if row['project'] in allowed), None)
+                    if (row['project'] in allowed or accept_root_projects and '*' in scope)
+                    and (project_modes or row['project_mode'] == 'auto')), None)
         if not row:
             return {'job': None}
         lease = secrets.token_urlsafe(32)
         db.execute("UPDATE jobs SET status='running',lease=?,lease_until=?,updated=? WHERE id=?",
                    (digest(lease), time.time() + LEASE_SECONDS, time.time(), row['id']))
-        return {'job': {k: row[k] for k in ('id', 'project', 'provider', 'prompt')}
+        fields = ('id', 'project', 'provider', 'prompt', 'project_mode') if project_modes else ('id', 'project', 'provider', 'prompt')
+        return {'job': {k: row[k] for k in fields}
                 | {'lease': lease, 'lease_seconds': LEASE_SECONDS}}
 
 
