@@ -4,6 +4,12 @@ Actualización: 27 de octubre de 2026, America/Mexico_City. Conector de equipos 
 
 Actualización: 20 de octubre de 2026, America/Mexico_City. Codex: Wear OS 0.2 ampliado con Inicio, Proyectos, Configuración y herramientas nativas; backend y Firebase pendientes de activación.
 
+Actualización: 21 de octubre de 2026. Claude: Wear OS 0.4, conversación por voz rápida (dictado dentro de la app, envío al terminar de hablar, respuesta inmediata, lectura en voz alta frase a frase, espera larga en el servidor); sin commit, backend sin desplegar y 0.4 sin instalar en el reloj.
+
+Actualización anterior: 21 de octubre de 2026. Claude: Wear OS 0.3 con interfaz minimalista (agente general primero, cuota y avisos, gesto de deslizar para volver).
+
+Actualización anterior: 20 de octubre de 2026, America/Mexico_City. Codex: Wear OS 0.2 ampliado con Inicio, Proyectos, Configuración y herramientas nativas; backend y Firebase pendientes de activación.
+
 > Leer antes de trabajar. Actualizar las secciones 0, 4 y 5 al terminar.
 
 Última actualización anterior: 2026-10-18, Europe/Berlin. Autor: Claude (agente general: respuestas breves por voz y texto solo bajo demanda).
@@ -12,9 +18,54 @@ Actualización: 20 de octubre de 2026, America/Mexico_City. Codex: Wear OS 0.2 a
 
 ## 0. Estado en una línea
 
+**Integración del repositorio revisada (27 octubre, Codex):** reunidas las dos ramas
+locales que no estaban en GitHub: Wear OS 0.4 (`f58b1b8`, `d62d4cd`) y conector de
+equipos (`39012f3`, `586a721`, `a511b06`). Rama de integración:
+`codex/integration-wear-20261027`, destinada a actualizar Wear-OS. Código combinado sin
+conflictos; SEMILLA conserva las notas de ambas ramas. Backend completo: 212 pruebas OK;
+frontend: 24 pruebas y build OK. Ver `deploy/ESTADO-INTEGRACION.md`.
+
+**Estado real del VPS comprobado el 27 octubre:** `/health` 200 y POST
+`/api/wear/pair/start` 200: el bloqueo de vinculación del 21 octubre ya está resuelto.
+POST `/api/workstation/enroll` sigue devolviendo 401 con el mensaje web anterior:
+falta publicar el conector. No se verificaron el commit desplegado, `wear_fast`,
+entrega FCM ni una conversación con cuenta real; no asumir paridad solo por tener Git actualizado.
+
 **Carpeta base y proyectos nuevos (27 octubre, Codex):** el usuario pidió buscar por nombre en una carpeta local como `F:\proyectos`, crear si falta y poder pedir Nuevo explícitamente. Implementado en cliente Windows y API/web: modos auto/existing/new, alcance de equipo para nombres de carpeta y límites locales; sin sobrescribir carpetas existentes, escapes por enlaces ni rutas remotas. Se actualiza el paquete de despliegue; aún sin publicar el VPS.
 
 **Conector Code Dashboard → Estado IA (27 octubre, Codex):** rama `codex/workstation-connector`. Cola HTTPS saliente para desarrollar en esta PC Windows, con vinculación web MFA, credencial de equipo revocable, aprobación local por defecto, proyectos autorizados y ejecución en worktrees. UI en Cola, SQLite separado y pruebas de seguridad/integración. **Solo implementado localmente; no publicado ni conectado al VPS.** Guía y mensaje para el agente del servidor: `deploy/CONECTOR-EQUIPOS.md`. El usuario confirmó la URL existente y quiere gestionar la vinculación desde la web; no proporcionó acceso SSH.
+
+**Wear OS 0.4: el agente general por voz, rápido (21 octubre, Claude).** El usuario dijo que
+el agente del reloj «no responde y tarda mucho»; pidió respuestas inmediatas («Ok, buscando»),
+voz fluida en español y el dictado de Samsung como en el control remoto de `universalControl`.
+Causas halladas: el dictado abría la pantalla de Google y luego otra de revisión que esperaba
+un toque para enviar (parecía que no respondía), el reloj consultaba cada 6 s, la voz solo
+sonaba al pulsar «Escuchar» y el prompt del reloj invitaba a usar herramientas siempre. Ahora:
+dictado dentro de la app con el reconocedor del reloj, envío automático al terminar de hablar,
+frase instantánea hablada, lectura en voz alta de cada frase del agente mientras escribe, botón
+detener, pantalla encendida mientras dura la conversación y espera larga en `/api/wear/state`.
+Servidor: prompt del reloj más directo y, con el nuevo ajuste `wear_fast` (activado), esfuerzo
+bajo para los mensajes del reloj al agente general. **Sin commit; backend sin desplegar.**
+La 0.4.0 está **instalada en el Watch 7** (21 oct, 14:28, `install -r` sobre la 0.3.0, datos
+conservados, abre sin fallos); el permiso de micrófono aún no se ha concedido (lo pide al
+primer toque de la esfera). El backend publicado
+hoy ya es el de Wear OS (responde «Vuelve a vincular el reloj desde la web» sin token).
+
+**Wear OS 0.3: interfaz minimalista y gesto de volver (21 octubre, Claude).** Pedido del
+usuario: lo primero que muestra el reloj es el agente principal (hablar + estado de sus agentes
+de código: cuánto tienen y últimas notificaciones), todo muy visual, con iconos, y con el gesto
+nativo de Wear OS (deslizar de izquierda a derecha) para volver. Hecho en la rama
+`claude/waros-ui-minimalist-redesign-784ff3` (parte de la punta de `Wear-OS`; **sin commit ni
+push**, el usuario no lo ha pedido). Primera pantalla = esfera (tocar = hablar) + estado real +
+dos anillos de cuota (Claude y Codex, ventana de 5 h) + el aviso más reciente o la última
+respuesta; al desplazar: avisos, cuatro iconos (Proyectos, Aprobaciones, Servidor, Ajustes) y
+atajos. **Todas** las pantallas, incluidas las herramientas y la revisión de una acción, se
+cierran deslizando a la derecha viendo la pantalla anterior bajo el dedo; la tecla Atrás hace
+lo mismo. Esto sustituye la decisión de 0.2 de abrir en un Inicio-dashboard. Backend:
+`view=home` añade `recent` y `approvals` (aditivo). APK **0.3.0** probada en el emulador e
+**instalada en el Watch 7 físico** (SM-L300, `install -r`, datos conservados; confirmado
+versionCode 3 y la app abre sin fallos). El backend del reloj sigue sin desplegar, así que
+sigue sin vincular y sin verse con datos reales.
 
 **Bloqueo de vinculación confirmado por HTTPS (21 octubre):** `/health` devuelve 200,
 pero `POST /api/wear/pair/start` devuelve 401 «Sesión expirada: inicia sesión de nuevo».
@@ -352,6 +403,19 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
 
 ## 4. Pendientes y límites de validación
 
+### Comprobación consolidada — 27 octubre
+
+- Actualizar el VPS desde la integración de Wear-OS conservando sus cambios y respaldo;
+  no basta con copiar JSON Firebase. Publicar backend y frontend de voz 0.4 y conector.
+  Procedimiento y comprobaciones: `deploy/ESTADO-INTEGRACION.md`.
+- Ya NO está pendiente arreglar el 401 de creación de código del reloj: HTTPS devolvió
+  200 el 27 octubre. Las entradas del 21 octubre se conservan como historial.
+- Sigue pendiente demostrar el conector publicado (su enroll vacío debe responder 400,
+  no 401 de login web), vínculo real de PC, conversación real/voz en reloj y entrega FCM.
+  No hay acceso SSH al VPS desde esta copia; el usuario mantiene un agente dentro.
+- Se preservaron carpetas de trabajo del otro agente y el google-services.json local.
+  Se añadieron exclusiones Git para evitar publicar esas copias y configuración por accidente.
+
 - La actualización del conector debe incluir también `project_mode` y la selección por carpeta base. El paquete v2 es acumulativo e incluye el conector inicial; no basta desplegar únicamente el primer parche. La ruta base se selecciona en Windows y no se configura desde el servidor.
 
 ### Conector de equipos — 27 octubre
@@ -360,6 +424,63 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
 - Backend y frontend nuevos todavía no están en `https://codex-dashboard.devdj.lat`. No se ha creado ningún código, token ni trabajo real remoto.
 - Tras publicar: usuario genera código en Cola, lo pega en Estado IA → Conector, asocia proyecto local y activa recepción. La copia de Estado IA está en `F:\proyectos\utilizetokens`.
 - Android SDK y Java de Android Studio detectados en la PC; falta validar una tarea/compilación Android real. La integración probada usa un agente falso para no consumir cupo ni tocar proyectos del usuario.
+
+### Wear OS 0.4 — voz rápida (21 octubre, Claude)
+
+- **Desplegar el backend** de esta rama: espera larga, `speech`/`ahead`/`version` en el estado,
+  actividad en palabras, prompt nuevo y `wear_fast`. Con el servidor anterior la 0.4 funciona,
+  pero consulta cada 3 s, solo lee la respuesta final y no usa esfuerzo bajo.
+- 0.4.0 **instalada en el Watch 7** (SM-L300, serial RFAY20EF46W). ADB se conectó solo por mDNS
+  con dos transportes del mismo reloj; se usó uno (`adb -t <id>`) tras comprobar modelo y serial.
+  Falta probar con voz real: permiso de micrófono (lo pide al primer toque), que el reconocedor
+  sea el de Samsung, acento y ruido, voz de lectura elegida
+  (se ve en Ajustes → «Leer respuestas», debajo), cortes al bajar la muñeca y batería. Solo se
+  probó en el emulador: el reconocimiento y el habla reales no se pueden simular en las pruebas.
+- Decisión mía, revisable con el usuario: lo dictado **se envía sin revisión** (como hace la web
+  desde que dejó de esperar 3 s); lo escrito con el teclado sí se revisa. Para equivocaciones
+  está el botón detener. Si prefiere revisar, cambiar `onFinal` → `ask` en `WatchViewModel.kt`.
+- `wear_fast` baja el esfuerzo solo si el catálogo del CLI declara `low` para el modelo
+  predeterminado; si no, no cambia nada. Es más rápido pero menos cuidadoso en tareas largas.
+  Se apaga en Ajustes del reloj («Respuestas rápidas del reloj») o con `WEAR_FAST=off`.
+- La pantalla se mantiene encendida hasta 2 min mientras se escucha, se espera la respuesta o se
+  habla; si el sistema la apaga igualmente (gesto de muñeca), la lectura se corta y la respuesta
+  se ve al volver. No se avisa por push de cada frase.
+- Frases instantáneas: tres para preguntas y tres para encargos, por palabras iniciales en
+  `Voice.kt` (`ack`). Los saludos no llevan frase porque el agente contesta enseguida.
+
+### Wear OS 0.3 — interfaz minimalista (21 octubre, Claude)
+
+- **Instalada en el Watch 7 físico (21 octubre, 05:06)** a petición del usuario, solo con
+  `adb -s 192.168.1.74:34563 install -r` (SM-L300; 0.2.0 → 0.3.0, mismo firmante, datos
+  intactos). Tras instalar se abrió la app (arranque en frío correcto, sin fallos en logcat).
+  **Todavía nadie la ha visto en la pantalla del reloj**: al capturar estaba cargando al 8 %
+  y la pantalla de carga de Samsung tapaba la app. Verla con datos reales exige desplegar el
+  backend y vincular. Antes de eso solo se probó en el emulador 432×432 (216 dp), a 192 dp
+  (`wm size 384x384`) y con texto al 130 %. El puerto de ADB por Wi-Fi cambia: descubrirlo con
+  `adb mdns services` (había dos anuncios; solo respondió 34563) y reconectar si queda offline.
+  Para el resto de pruebas usar siempre `-s` con el serial exacto.
+- El backend nuevo (`recent`, `approvals`) debe desplegarse con el del reloj. Sin backend la
+  primera pantalla muestra el estado vacío («Toca la esfera para hablar») y anillos en «–».
+- Criterios míos, no del usuario, fáciles de cambiar en `Models.kt`: anillo verde ≥ 40 %
+  libre, ámbar ≥ 15 %, coral por debajo; «5 horas» = ventana de ≤ 300 min, la otra es la
+  semanal; «Ahora conviene X» = el agente con más cuota de 5 h libre. Mostrar solo: no hay
+  aviso push cuando la cuota baja. Si el CLI de Codex no entrega ventanas, su anillo queda en «–».
+- La edad de los avisos («hace 5 min») sale de `finished_at`, que el servidor escribe como
+  texto en su propia hora local; `wear.stamp` lo interpreta con la zona del servidor. Las
+  aprobaciones pendientes no tienen hora y se muestran como «ahora».
+- El gesto de volver no se pudo medir con un dedo real, solo con toques inyectados (la captura
+  a medio deslizamiento está inspeccionada). La primera pantalla deja el gesto al sistema, que
+  sale de la app: es el comportamiento estándar, no un fallo.
+- La 0.3 no cambia permisos, red ni almacenamiento: mismas rutas `/api/wear/*`, mismo
+  token cifrado. Añade dos lecturas al reanudar la primera pantalla (`view=home` y cuota con
+  su caché de 2 min). Falta medir su efecto en la batería real.
+- Windows: las pruebas del backend suponen Linux (`fcntl`, `termios`). Esta sesión usó stubs
+  fuera del repo y pasan las 21 de `test_wear`; fallan 4 pruebas ajenas de otros módulos
+  (`test_http`, `test_push`, `test_auth_security`, `test_general`) por semántica de Windows
+  (modo 0600, mtime, separadores), no por este cambio: repetir en Linux/CI antes de publicar.
+- Compilar en Windows: Gradle bloquea `~/.gradle` si Android Studio está abierto → usar un
+  `GRADLE_USER_HOME` propio (como hace `tools/build_wear.cmd`); en algunos shells
+  `gradlew.bat` no se encuentra en el directorio actual, llamarlo con ruta absoluta.
 
 ### Bloqueo actual de vinculación — 21 octubre
 
@@ -832,6 +953,29 @@ no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyec
 
 ## 5. Implementación y verificaciones completadas
 
+### Integración de ramas y auditoría — 27 octubre, Codex
+
+- Fetch de origin y revisión de todas las ramas: main y Wear-OS remotas estaban sin
+  cambios nuevos; las novedades eran dos commits de reloj y tres del conector locales.
+  Se creó una rama de integración desde el conector y se incorporó la rama Claude sin
+  sobrescribir ninguna referencia de trabajo original ni hacer reset/clean.
+- Únicos conflictos: cuatro bloques de SEMILLA, unidos conservando ambas notas. app.py
+  y el resto del código se combinaron automáticamente. Revisado el long polling: espera
+  asíncrona, sin retener un hilo durante los 25 s. Ampliada cobertura de homologación
+  para incluir test_workstations. Configuración Firebase y worktrees excluidos de Git.
+- WSL Ubuntu + entorno Python temporal con requisitos fijados: suite completa
+  `unittest discover -s tests`, **212 pruebas OK** sin omisiones. Frontend con Node
+  24.22.1: **24 pruebas OK y build Vite OK**. Evidencias `integration-backend-tests.log`,
+  `integration-frontend-tests.log` e `integration-frontend-build.log` en wear-validation.
+- Android integrado 0.4: build correcto, **10 pruebas JVM y 18 de interfaz aprobadas**
+  en emulator-5580; lint **0 errores y 2 avisos** de dependencias nuevas disponibles.
+  Captura del agente inspeccionada. APK debug universal:
+  `artifacts/wear-validation/codex-watch-integrated-0.4.0.apk`. Reporte con SHA-256:
+  `integration-validation.json`. No se instaló en el reloj físico ni se modificó el VPS.
+- Sondeo HTTPS con TLS validado: health 200, wear state 401 correcto de reloj sin token,
+  wear pair/start 200, workstation/enroll 401 antiguo. No se leyó configuración privada
+  ni se enviaron tareas reales. `integration-production-probe.log` registra solo estados.
+
 ### Selección por carpeta base — 27 octubre
 
 - Modos automáticos/existente/nuevo e identificadores con guiones bajos. Capacidad de carpeta base anunciada por el cliente y alcance por nombres configurable al vincular el equipo. Compatibilidad con clientes anteriores y migración transaccional aditiva de `jobs.project_mode`.
@@ -844,6 +988,62 @@ no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyec
 - `frontend/src/Workstations.jsx`: vínculo, equipos, envío por proyecto/proveedor, cola, informes y revocación desde Cola. Conserva la cola del VPS.
 - **204 pruebas Python, 24 Node y build Vite aprobados.** Prueba HTTPS completa `tools/verify_workstation_bridge.py` con el cliente de Estado IA: aprobación local, proceso hijo real/agente falso, rama Git aislada, tests antes/después aprobados y entrega confirmada del informe; copia de trabajo original intacta.
 - No despliegue, cambios de autenticación real, tareas reales, APK ni gastos de modelos. Cambios ajenos `.github/.claude/` y `wear/app/google-services.json` conservados fuera del commit.
+
+### Wear OS 0.4 — conversación por voz rápida (21 octubre, Claude)
+
+- Reloj: `Voice.kt` nuevo con `Speaker` (TextToSpeech creado una vez en el ViewModel, mejor voz
+  española instalada, uso asistente, cola de frases), `Ear` (SpeechRecognizer dentro de la app,
+  mismo enfoque que `universalControl/watch/.../voice/SpeechInput.kt`: servicio del sistema,
+  si no el del dispositivo, y si falla antes de oír la pantalla del sistema), `ack`,
+  `sentenceEnd`, `lastSentence`, `spoken` y `voiceScore`. `WatchViewModel.kt`: `listen`, `ask`,
+  `stopTask`, `voice`, lectura progresiva (`speakProgress`) y espera larga sin bloquear el envío
+  (`sendEpoch`). `MainActivity.kt`: permiso de micrófono, respaldo al dictado del sistema,
+  pantalla encendida, Atrás cancela la escucha. Pantallas: texto en vivo bajo la esfera (que
+  crece con la voz), frase en curso con botón detener, Ajustes con «Leer respuestas» y
+  «Respuestas rápidas del reloj»; los atajos preguntan con un toque. Manifiesto: `RECORD_AUDIO`.
+  App 0.4.0 (versionCode 4).
+- Servidor: `wear.activity_of`, `speech`, `ahead` y `version` en `wear.snapshot`; espera larga en
+  `wear_state` (`wait` ≤ 25 s, revisa cada 0,7 s con la caché de eventos); prompt del reloj en
+  `runs.start_run`; ajuste `wear_fast` en `config.DEFAULT_SETTINGS` con validación.
+- Verificación: **25 pruebas del backend de Wear OK** (4 nuevas: frases y huella, cola,
+  esfuerzo, espera larga); `test_chats`, `test_availability` y `test_models` OK; los mismos 3
+  fallos de Windows de antes en `test_general`/`test_http`. **10 JVM OK** (frase instantánea,
+  cortes de frase, voz, estado). **18 de interfaz OK en `emulator-5580`**, incluida una de turno
+  por voz completo con botón detener. Lint: 0 errores (1 aviso de Firebase 26 disponible).
+  Captura del estado trabajando revisada.
+
+### Wear OS 0.3 — interfaz minimalista y navegación por gesto (21 octubre, Claude)
+
+- Código en `wear/app/src/main/java/lat/devdj/codex/watch/`. Nuevos: `Icons.kt` (35 iconos de
+  línea dibujados en canvas, sin assets), `Kit.kt` (paleta, `ScrollPage` con indicador de Wear y
+  corona, `Action` fila con icono, `RoundButton`, `QuotaRing`, `Heading`, `Field`), `Orb.kt`,
+  `Nav.kt` (destinos `Dest`, pila `Nav` en el ViewModel, caché `ToolHub` acotada y `Screens`
+  = `SwipeToDismissBox`), `Models.kt` (cuota, avisos, `ago`, `bestAgent`), `Screens.kt`
+  (primera pantalla, Avisos, Cuota, Escribir, Respuesta, Avisos del reloj, Desvincular,
+  Vincular). Reescritos: `MainActivity.kt` (raíz) y `WatchDashboard.kt` (cada vista de
+  herramienta y cada acción a revisar es una pantalla de la **única** pila, por eso el gesto
+  funciona en todas; al volver se pinta al instante la última respuesta y se refresca).
+  `WatchViewModel.kt` carga y guarda cifrados `home` y `quota`; el aviso nuevo se trae al
+  terminar el agente. Sin dependencias nuevas (todo está en Wear Compose Material 3 1.7.1).
+- Decisiones: negro puro; sin `TimeText` (la primera pantalla gana altura); esfera de
+  diámetro adaptable; botones de dictar/enviar arriba del texto; «Volver / Inicio /
+  Actualizar» como tres botones redondos al final de cada herramienta; confirmar una acción
+  la envía desde el ViewModel, así que deslizar atrás a mitad de envío no la cancela; una
+  acción en revisión se cancela sin enviar nada al deslizar. El tap en una notificación push
+  (extra `show_dashboard`) ahora abre Avisos.
+- Backend: `wear.recent` y `wear.stamp` en `cm/wear.py`; `view=home` en `app.py` devuelve
+  además `approvals` (número) y `recent` (hasta 6: aprobaciones y lo último terminado o con
+  error, con `kind`, `project`, `provider`, título ≤ 80, `at`). Pruebas nuevas en
+  `tests/test_wear.py`.
+- Verificación: **21 pruebas del backend de Wear OK** (Windows con stubs), **6 JVM OK**,
+  **17 de interfaz OK en `emulator-5580`** (conversación, primera pantalla con cuota y aviso,
+  Cuota, gesto de volver incluida una captura a medio deslizamiento, avisos, herramientas con
+  revisión/confirmación, reintento sin duplicar, vinculación). Lint: 0 errores, 1 aviso
+  (Firebase 26.0.0 disponible). Capturas inspeccionadas en 216 dp, 192 dp y texto al 130 %
+  (los anillos pasaron a una sola línea tras verlo). Ajustes del emulador restaurados
+  (`wm size reset`, `font_scale 1.0`). Datos de las pruebas = transporte simulado.
+- APK: `%TEMP%\codex-watch-ui-build\outputs\apk\debug\app-debug.apk` (0.3.0, depuración, no
+  versionado). Capturas: `artifacts/wear-ui-20261021/` (ignorado por Git).
 
 ### Diagnóstico HTTPS de vinculación — 21 octubre
 

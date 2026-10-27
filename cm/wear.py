@@ -127,13 +127,49 @@ def compact_task(task):
     return {key: task.get(key, 'main' if key == 'chat_id' else '') for key in ('id', 'project', 'chat_id', 'title', 'status', 'run_id', 'finished_at')}
 
 
+def stamp(text):
+    """Epoch de una marca `YYYY-MM-DD HH:MM:SS TZ` del servidor (escrita con su propia hora local)."""
+    try: return int(time.mktime(time.strptime(str(text or '')[:19], '%Y-%m-%d %H:%M:%S')))
+    except (ValueError, OverflowError): return 0
+
+
+def recent(records, approvals, limit=6):
+    """Avisos para la pantalla principal del reloj: aprobaciones pendientes y después lo último que terminó o falló."""
+    rows = [{'kind': 'approval', 'project': str(row.get('project', '')), 'provider': str(row.get('provider', '')),
+             'title': 'Pide tu aprobación', 'at': int(time.time())} for row in approvals[:3]]
+    done = [task for task in reversed(records) if task['status'] in ('terminado', 'error')]
+    for task in sorted(done, key=lambda row: stamp(row.get('finished_at')), reverse=True):
+        rows.append({'kind': task['status'], 'project': task['project'], 'provider': task.get('provider', ''),
+                     'title': plain(task.get('title'), 80), 'at': stamp(task.get('finished_at'))})
+    return rows[:limit]
+
+
+COMMAND_ACTIVITY = (('docker', 'Revisando contenedores'), ('git ', 'Revisando versiones'), ('curl', 'Comprobando la web'),
+                    ('test', 'Ejecutando pruebas'), ('npm', 'Compilando'), ('df ', 'Revisando el disco'), ('free', 'Revisando la memoria'))
+
+
+def activity_of(events):
+    """Frase corta de lo que hace el agente ahora, en palabras del usuario y nunca con el comando literal."""
+    last = next((event for event in reversed(events) if event.get('t') in ('tool', 'text') and not event.get('sub')), None)
+    if not last: return ''
+    if last['t'] == 'text': return 'Respondiendo'
+    name = str(last.get('name', '')).lower()
+    command = str((last.get('input') or {}).get('command', '')).lower() if isinstance(last.get('input'), dict) else ''
+    if 'web' in name: return 'Buscando en la web'
+    if any(word in name for word in ('search', 'grep', 'glob')): return 'Buscando'
+    if 'read' in name: return 'Leyendo'
+    if any(word in name for word in ('write', 'edit', 'change')): return 'Editando'
+    if name in ('task', 'agent'): return 'Repartiendo el trabajo'
+    return next((label for word, label in COMMAND_ACTIVITY if word in command), 'Trabajando')
+
+
 def snapshot(session_id):
     records = tasks.task_records()
     own = [task for task in records if task['project'] == config.GENERAL and task.get('chat_id', 'main') == 'main']
     latest = own[-1] if own else None
     active = [task for task in own if task['status'] in ('espera', 'working')]
     state = 'working' if any(task['status'] == 'working' for task in active) else 'queued' if active else 'idle'
-    response, activity, run_id = '', '', ''
+    response, activity, run_id, speech = '', '', '', ''
     if latest:
         run_id = latest.get('run_id') or ''
         meta = runs.run_meta(run_id)
@@ -142,22 +178,27 @@ def snapshot(session_id):
             response = plain((run.get('result') or {}).get('text') or run.get('error'))
             if latest['status'] == 'error': state = 'error'
             if run.get('approvals'): state = 'attention'
-            tool = next((event for event in reversed(run.get('events', [])) if event.get('t') == 'tool'), None)
-            if tool:
-                name = str(tool.get('name', '')).lower()
-                activity = ('Buscando' if 'search' in name else 'Leyendo' if 'read' in name else
-                            'Editando' if any(word in name for word in ('write', 'edit', 'change')) else 'Trabajando')
+            events = run.get('events', [])
+            activity = activity_of(events)
+            # Todo lo que el agente va diciendo en este turno, en orden: el reloj lo lee en voz alta frase a frase mientras escribe.
+            speech = plain('\n'.join(event['text'] for event in events if event.get('t') == 'text' and not event.get('sub') and event.get('text')), 2400)
         elif latest['status'] == 'error':
             state, response = 'error', plain(latest.get('result'))
+    # Mensajes del mismo chat que se atienden antes que el último (uno a la vez por chat).
+    ahead = sum(task['status'] in ('espera', 'working') for task in own[:-1]) if latest and latest['status'] == 'espera' else 0
     # Un resumen acotado, nunca logs, reglas, credenciales o comandos del servidor.
     real = [task for task in records if task['project'] != config.GENERAL]
     with database() as db:
         device = db.execute('SELECT mode FROM wear_devices WHERE session_id=?', (session_id,)).fetchone()
-    return {'state': state, 'activity': activity, 'reply': response, 'run_id': run_id,
+    data = {'state': state, 'activity': activity, 'reply': response, 'speech': speech, 'ahead': ahead, 'run_id': run_id,
             'task': compact_task(latest) if latest else None,
             'last_task': compact_task(real[-1]) if real else None,
             'updated_at': int(time.time()), 'notifications': device['mode'] if device else 'off',
             'firebase': firebase_client()}
+    # Huella de lo que el reloj muestra: la espera larga de /api/wear/state responde en cuanto cambia.
+    data['version'] = hashlib.sha256(json.dumps([state, activity, response, speech, ahead, run_id, latest and latest['status'],
+                                                 data['notifications']], ensure_ascii=False).encode()).hexdigest()[:16]
+    return data
 
 
 def send(session_id, request_id, text, project=config.GENERAL, chat_id='main', provider='', model='', effort=''):

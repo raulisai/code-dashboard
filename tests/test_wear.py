@@ -22,6 +22,18 @@ class WearTests(IsolatedConfig, unittest.TestCase):
         session = wear.authenticate(token)
         return token, session
 
+    def test_recent_lists_approvals_first_then_latest_finished_work_newest_first(self):
+        done = lambda name, status, at: {'id': name, 'project': 'alpha', 'provider': 'claude', 'title': name, 'status': status, 'finished_at': at}
+        records = [done('viejo', 'terminado', '2026-10-20 08:00:00 CEST'), done('fallo', 'error', '2026-10-20 09:30:00 CEST'),
+                   done('nuevo', 'terminado', '2026-10-20 10:00:00 CEST'), done('activo', 'working', ''), done('cola', 'espera', '')]
+        rows = wear.recent(records, [{'project': 'beta', 'provider': 'codex'}], limit=4)
+        self.assertEqual([row['kind'] for row in rows], ['approval', 'terminado', 'error', 'terminado'])
+        self.assertEqual([row['title'] for row in rows[1:]], ['nuevo', 'fallo', 'viejo'])
+        self.assertEqual(rows[0]['project'], 'beta')
+        self.assertGreater(rows[1]['at'], rows[2]['at'])
+        self.assertEqual(wear.stamp('sin fecha'), 0)
+        self.assertEqual(wear.recent([done('x', 'terminado', '')], [])[0]['at'], 0)
+
     def test_pair_requires_approval_and_recovers_lost_response_until_first_authenticated_use(self):
         pair = wear.start_pair('ip')
         self.assertEqual(wear.poll_pair(pair['secret']), {'status': 'pending'})
@@ -112,6 +124,44 @@ class WearTests(IsolatedConfig, unittest.TestCase):
         self.assertNotIn('provider', data['task'])
         self.assertEqual(wear.plain('Listo\n```cm-ui\n{"secret":true}\n```'), 'Listo')
 
+    def test_snapshot_streams_what_the_agent_says_and_its_version_follows_changes(self):
+        _, session = self.link()
+        meta = self.run_meta(provider='claude', project=config.GENERAL)
+        path = config.RUNS / meta['id'] / 'events.jsonl'
+        rows = [{'type': 'stream_event', 'event': {'type': 'content_block_start', 'content_block': {'type': 'text'}}},
+                {'type': 'stream_event', 'event': {'type': 'content_block_delta', 'delta': {'type': 'text_delta', 'text': 'Va, reviso los **contenedores**.'}}}]
+        path.write_text(''.join(json.dumps(row) + '\n' for row in rows))
+        tasks.save_tasks([self.task(project=config.GENERAL, provider='claude', run_id=meta['id'], status='working')])
+        first = wear.snapshot(session['id'])
+        self.assertEqual((first['speech'], first['activity']), ('Va, reviso los contenedores.', 'Respondiendo'))
+        self.assertEqual(first['version'], wear.snapshot(session['id'])['version'])
+        rows.append({'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'id': 't1', 'name': 'Bash', 'input': {'command': 'docker ps'}}]}})
+        path.write_text(''.join(json.dumps(row) + '\n' for row in rows))
+        second = wear.snapshot(session['id'])
+        self.assertEqual(second['activity'], 'Revisando contenedores')
+        self.assertNotEqual(first['version'], second['version'])
+        self.assertNotIn('docker', json.dumps(second))
+
+    def test_queued_message_reports_how_many_go_first(self):
+        _, session = self.link()
+        tasks.save_tasks([self.task(project=config.GENERAL, status='working'), self.task(project=config.GENERAL, status='espera'),
+                          self.task(project=config.GENERAL, status='espera')])
+        data = wear.snapshot(session['id'])
+        self.assertEqual((data['state'], data['ahead']), ('working', 2))
+
+    def test_watch_requests_use_low_effort_only_in_fast_mode_and_when_the_model_allows_it(self):
+        def effort(origin='wear', efforts=('low', 'high')):
+            task = self.task(project=config.GENERAL, provider='claude', origin=origin, details='Hola')
+            with patch('cm.modelcatalog.supported_efforts', return_value=list(efforts)), patch.object(tmux, 'new_session', return_value=(True, '')):
+                _, _, run_id = runs.start_run(task)
+            return runs.run_meta(run_id)['effort']
+        self.assertEqual(effort(), 'low')
+        self.assertEqual(effort(origin='web'), '')
+        self.assertEqual(effort(efforts=('high',)), '')
+        self.assertEqual(runs.save_settings({'wear_fast': 'off'})[0], True)
+        self.assertEqual(effort(), '')
+        self.assertFalse(runs.save_settings({'wear_fast': 'rápido'})[0])
+
     def test_watch_prompt_reuses_general_and_injects_compact_real_queue(self):
         tasks.save_tasks([self.task(title='Última tarea real', status='terminado')])
         task = self.task(project=config.GENERAL, origin='wear', details='¿Cómo va?')
@@ -179,6 +229,17 @@ class WearHttpTests(IsolatedConfig, unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.client.post('/api/wear/disconnect', json={}, headers=headers)).status, 200)
         self.assertEqual((await self.client.get('/api/wear/state', headers=headers)).status, 401)
 
+    async def test_state_waits_for_a_change_but_never_longer_than_asked(self):
+        token = await self.linked(); headers = {'Authorization': 'Bearer ' + token}
+        first = await (await self.client.get('/api/wear/state', headers=headers)).json()
+        started = time.monotonic()
+        same = await (await self.client.get(f"/api/wear/state?wait=1&since={first['version']}", headers=headers)).json()
+        self.assertGreaterEqual(time.monotonic() - started, 0.9)
+        self.assertEqual(same['version'], first['version'])
+        started = time.monotonic()
+        self.assertEqual((await self.client.get('/api/wear/state?wait=20&since=otra-huella', headers=headers)).status, 200)
+        self.assertLess(time.monotonic() - started, 5)
+
     async def test_body_limits_and_bad_json(self):
         response = await self.client.post('/api/wear/pair/start', json={'label': 'x' * 17000})
         self.assertEqual(response.status, 413)
@@ -188,9 +249,12 @@ class WearHttpTests(IsolatedConfig, unittest.IsolatedAsyncioTestCase):
         from cm import projects, quota
         token = await self.linked(); headers = {'Authorization': 'Bearer ' + token}
         self.assertEqual((await self.client.get('/api/wear/view?view=settings')).status, 401)
-        with patch.object(projects, 'snapshot', return_value={'projects': [{'name': 'alpha'}], 'task_records': [], 'approvals': []}):
+        finished = {'id': 't1', 'project': 'alpha', 'provider': 'codex', 'title': 'Actualizar tienda', 'status': 'terminado', 'finished_at': '2026-10-20 10:00:00 CEST'}
+        with patch.object(projects, 'snapshot', return_value={'projects': [{'name': 'alpha'}], 'task_records': [finished], 'approvals': []}):
             home = await (await self.client.get('/api/wear/view?view=home', headers=headers)).json()
             self.assertEqual(home['projects'], 1)
+            self.assertEqual(home['approvals'], 0)
+            self.assertEqual([(row['kind'], row['project'], row['title']) for row in home['recent']], [('terminado', 'alpha', 'Actualizar tienda')])
             catalog = await (await self.client.get('/api/wear/view?view=projects', headers=headers)).json()
             self.assertEqual(catalog['projects'][0]['name'], 'alpha')
         self.assertEqual((await self.client.get('/api/wear/view?view=security', headers=headers)).status, 404)

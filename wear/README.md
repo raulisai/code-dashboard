@@ -1,4 +1,4 @@
-# Codex en Wear OS — dashboard nativo 0.2
+# Codex en Wear OS — dashboard nativo 0.4
 
 Activación por responsables (agente del VPS y administrador), llaves SSH, Firebase,
 despliegue y prueba final: [`deploy/WEAR-OS-ACTIVACION.md`](../deploy/WEAR-OS-ACTIVACION.md).
@@ -11,12 +11,39 @@ y la cola existente. No necesita una aplicación propia en el teléfono.
 
 ## Experiencia
 
-Al entrar: **Inicio**, con cuota de Claude Code (ventanas de cinco horas/semanal,
-porcentaje libre y reposición), actividad real, cola y accesos a **Proyectos**,
-**Configuración** y el **Agente general**. Fondo negro y herramientas progresivas;
-no se carga la web de escritorio dentro del reloj.
+Al entrar aparece el **agente general** y nada más que lo esencial, en una sola pantalla:
 
-Proyectos permite buscar y abrir cada proyecto. Sus herramientas nativas incluyen:
+- **Esfera**: tocarla es hablar (dictado del sistema, con revisión antes de enviar).
+- **Estado real** sobre la esfera: «Aquí estoy», «Leyendo», «Necesito tu atención»…
+- **Dos anillos** con lo que queda de la ventana de 5 horas de Claude Code (✻) y de Codex
+  (`</>`): verde ≥ 40 %, ámbar ≥ 15 %, coral por debajo. Tocarlos abre **Cuota**: 5 horas y
+  semanal de cada uno, cuándo se reponen y «Ahora conviene Claude/Codex».
+- **Una línea debajo**: la respuesta que acaba de llegar, o el último aviso (aprobación
+  pendiente, trabajo terminado o con error). Tocarla abre la respuesta o **Avisos**.
+
+Deslizar hacia arriba o girar la corona muestra el resto, siempre con icono: los últimos
+avisos, cuatro botones grandes (**Proyectos, Aprobaciones, Servidor, Ajustes**; Aprobaciones
+lleva un punto ámbar si hay alguna pendiente), «Escribir», «Última tarea», «¿Qué proyectos
+tenemos?» y «Actualizar». Cada aviso lleva a su sitio: aprobación → Aprobaciones, trabajo de
+un proyecto → el chat de ese proyecto, respuesta del agente general → Tu respuesta.
+
+El diseño es negro puro, un solo peso de línea y iconos dibujados en código (`Icons.kt`, sin
+fuentes ni bitmaps). Las acciones son filas con icono y, cuando hace falta, una segunda línea;
+las que no llevan texto (dictar, enviar, escuchar, volver, inicio, actualizar) son botones
+redondos con descripción para lectores de pantalla. El texto grande reduce esfera y anillos
+en lugar de partir las cifras.
+
+## Gestos
+
+**Deslizar de izquierda a derecha vuelve a la pantalla anterior**, como en cualquier app de
+Wear OS (`SwipeToDismissBox`): la pantalla se desplaza y deja ver la anterior bajo el dedo.
+Vale para todas las pantallas, también para una acción que se está revisando (cancela sin
+enviar nada). En la primera pantalla el gesto se deja al sistema, que sale de la app. La tecla
+Atrás del reloj hace lo mismo que el deslizamiento. Cada pantalla recuerda su desplazamiento y
+las herramientas pintan al instante la última respuesta mientras se actualizan (`Nav.kt`).
+
+Proyectos lista cada proyecto con sus servicios activos y trabajo en cola (la búsqueda aparece
+con más de seis). Sus herramientas nativas incluyen:
 
 - Agente: chats existentes, crear/renombrar/borrar, continuidad, proveedor/modelo/
   esfuerzo por mensaje, dictado con revisión, respuesta y actividad reciente.
@@ -31,22 +58,49 @@ Proyectos permite buscar y abrir cada proyecto. Sus herramientas nativas incluye
   jobs; estado y controles de contenedores, protegidos con las reglas del dashboard.
 - Crear/importar proyectos, destacados, eliminación recuperable y papelera.
 
-Configuración permite cambiar proveedor y modelos predeterminados, permisos,
-sandbox y versiones automáticas. Inicio también ofrece servidor y aprobaciones.
+Ajustes permite cambiar proveedor y modelos predeterminados, permisos, sandbox, versiones
+automáticas y avisos, y desvincular el reloj. La primera pantalla ofrece también servidor y
+aprobaciones. Toda herramienta termina con tres botones: volver, inicio y actualizar.
 Cada acción mutante se revisa y confirma; leer una vista no ejecuta comandos ni
 crea una terminal. Los controles llaman a los mismos validadores del dashboard.
 
-Tocar la esfera abre el dictado del sistema. El texto se revisa antes de enviarlo.
-También se puede escribir con el teclado del reloj. Ejemplos:
+## Conversación por voz
+
+Pensada para que se sienta inmediata:
+
+1. **Tocar la esfera** empieza a escuchar dentro de la app, con el reconocedor del propio reloj
+   (el de Samsung en un Galaxy Watch, igual que el control remoto de `universalControl`), sin
+   abrir otra pantalla. Las palabras aparecen en vivo bajo la esfera, que crece con tu voz.
+   La primera vez pide el permiso del micrófono. Si el reconocedor no arranca o falla antes de
+   oír nada, se abre el dictado del sistema; si tampoco existe, el teclado.
+2. **Al dejar de hablar se envía solo** (o al tocar la esfera otra vez). Atrás cancela sin enviar.
+3. **Respuesta inmediata**: el reloj dice en voz alta «Ok, buscando.», «Va, me pongo con eso.»…
+   (según sea pregunta o encargo; nada ante un saludo) antes de que el mensaje llegue al servidor.
+4. **La respuesta se lee mientras se escribe**: cada frase terminada del agente se dice en cuanto
+   existe y el resto al acabar. Debajo de la esfera se ve la frase en curso, con un botón para
+   **detener** el mensaje (o quitarlo de la cola si aún no empezó). El estado dice lo que hace
+   en palabras («Revisando contenedores», «En cola · 1 antes»).
+5. Tocar la esfera mientras habla la interrumpe y vuelve a escuchar.
+
+La voz usa el motor del sistema con la mejor voz española instalada (prioridad México, luego
+Estados Unidos y Latinoamérica, por calidad, evitando las que necesitan red), a 1,05× y con uso
+«asistente». Se prepara al abrir la app para que la primera palabra no espere. Mientras la
+conversación está viva (escuchando, esperando la respuesta o hablando, hasta 2 min) la pantalla
+no se apaga. Ajustes → «Leer respuestas» la desactiva en este reloj; «Respuestas rápidas del
+reloj» (servidor, activado) manda los mensajes del reloj al agente general con esfuerzo bajo e
+instrucciones de contestar sin herramientas cuando no hacen falta.
+
+También se puede escribir con el teclado del reloj («Escribir»): ese texto se revisa y se envía
+con el botón. Ejemplos:
 
 - «¿Cómo va la última tarea?»
 - «¿Qué proyectos tenemos?»
 - «Trabaja en alpha y corrige el formulario»
 - «Ahora revisa cómo quedó»
 
-El agente recibe contexto real reciente y una instrucción de respuesta breve. El
-menú secundario permite preguntar por la última tarea, abrir la respuesta,
-escucharla, actualizar o abrir las demás secciones. El agente general sigue usando
+El agente recibe contexto real reciente y una instrucción de respuesta breve. «Última tarea»
+y «¿Qué proyectos tenemos?» preguntan con un toque y suben a la esfera para ver y oír la
+respuesta; «Tu respuesta» la muestra completa y la repite. El agente general sigue usando
 su proveedor predeterminado; el chat de proyecto usa el proyecto/chat elegido.
 Los mensajes comparten la cola del chat principal: si el agente ya está trabajando,
 la nueva petición espera su turno. La esfera muestra su actividad mientras tanto.
@@ -73,16 +127,23 @@ cookies web, TLS permisivo ni credenciales incluidas en el APK.
 
 ## Conectividad y batería
 
-- Consulta al abrir/reanudar una vista y después de acciones. El chat visible
-  trabajando se actualiza cada seis segundos; Inicio con trabajo activo cada diez.
+- Consulta al abrir/reanudar una vista y después de acciones. Al reanudar la primera pantalla
+  pide el estado del agente, los avisos (`view=home`: `recent` y `approvals`) y la cuota; todo
+  se guarda cifrado para pintar al instante sin red. Mientras el agente general trabaja (y la
+  conversación está a la vista o se espera su respuesta), el reloj usa una **espera larga**:
+  `GET /api/wear/state?wait=20&since=<huella>` vuelve en cuanto cambia algo (cada frase, la
+  actividad, la respuesta) o a los 20 s, así que no hay retraso de sondeo. Con un servidor
+  anterior, sin huella, consulta cada tres segundos. Al terminar trae una vez el aviso nuevo.
+  El chat de un proyecto visible trabajando se actualiza cada seis segundos.
   Únicamente **RESUMED**, pausa tras tres fallos. Logs, terminal, archivos y Git
   se actualizan a petición; en reposo no hay consultas periódicas de red.
-- Cuota solicitada por separado, con la caché de dos minutos ya existente; un
-  proveedor lento no bloquea la navegación ni el resumen de actividad.
+- Cuota solicitada por separado, con la caché de dos minutos ya existente (no más de una vez
+  por minuto; «Actualizar» fuerza `refresh=1`); un proveedor lento no bloquea la navegación
+  ni el resumen de actividad.
 - Sin servicio permanente, socket, wake locks propios, sensores ni grabación continua.
-- El dictado puede usar los servicios de reconocimiento configurados en el reloj;
-  su disponibilidad y tratamiento del audio dependen del sistema. La app no graba
-  ni envía audio al VPS; envía la transcripción revisada.
+- El dictado usa el servicio de reconocimiento del reloj y el micrófono solo mientras escucha;
+  se corta al salir de la pantalla. Su disponibilidad y tratamiento del audio
+  dependen de ese servicio. La app no graba ni envía audio al VPS; envía solo el texto.
 - Estado sin conexión con hora de actualización. Un envío sin confirmación conserva
   el texto y el mismo identificador al reintentar, incluso tras cerrar la app.
 - La deduplicación del servidor usa un ID determinista en la cola, también ante un
@@ -175,9 +236,13 @@ adb -s emulator-5580 shell am instrument -w lat.devdj.codex.watch.test/androidx.
 ```
 
 Ajustar el serial al del emulador. No usar comandos ADB sin serial si hay un reloj
-físico conectado. `ConversationTest` y `DashboardTest` utilizan transporte aislado: comprueban UI,
-revisión, envío, fallo/reintento, restauración y revocación sin gastar cuota ni crear
-trabajo real. Después verificar el flujo HTTPS contra el backend desplegado y
+físico conectado. `ConversationTest`, `DashboardTest` y `PairingTest` utilizan transporte aislado:
+comprueban UI, cuota y avisos de la primera pantalla, el gesto de deslizar para volver (también
+a medio gesto, con captura), revisión, envío, fallo/reintento, restauración y revocación sin
+gastar cuota ni crear trabajo real. Las capturas quedan en el almacenamiento externo de la app
+(`/sdcard/Android/data/lat.devdj.codex.watch/files/`; en Git Bash anteponer `MSYS_NO_PATHCONV=1`
+a `adb pull`). Probar también con `adb shell wm size 384x384` y `settings put system font_scale 1.3`,
+y restaurar con `wm size reset` y `font_scale 1.0`. Después verificar el flujo HTTPS contra el backend desplegado y
 finalmente probar dictado, notificaciones y batería en el reloj físico.
 
 En Windows, `tools/verify_wear_android.cmd emulator-5580 [directorio-de-build]`

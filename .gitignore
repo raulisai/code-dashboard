@@ -9,4 +9,6 @@ wear/**/build/
 wear/local.properties
 wear/*.jks
 wear/google-services.json
+wear/app/google-services.json
+.github/.claude/
 wear-firebase-*.json

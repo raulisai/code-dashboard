@@ -6,6 +6,10 @@ La web envía una tarea a una computadora con Estado IA. La PC consulta la cola 
 
 ## Activar el backend desde el dashboard existente
 
+La integración actual está en la rama `Wear-OS` y reúne también las mejoras 0.4
+del reloj. Ver `deploy/ESTADO-INTEGRACION.md` para desplegar ambas juntas; si se usa
+esa rama, no volver a aplicar el parche antiguo del conector encima.
+
 No necesitas SSH en la PC para usar el conector. El backend debe instalarse una vez en el VPS. Puedes hacerlo desde el chat del agente del propio dashboard, subiendo el parche adjunto a esta guía.
 
 Instrucción para el agente del VPS:
