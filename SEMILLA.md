@@ -1,5 +1,7 @@
 # SEMILLA — estado del trabajo en codex-dashboard
 
+Actualización: 27 de octubre de 2026, America/Mexico_City. Conector de equipos locales implementado y probado; sin despliegue VPS ni vínculo real.
+
 Actualización: 20 de octubre de 2026, America/Mexico_City. Codex: Wear OS 0.2 ampliado con Inicio, Proyectos, Configuración y herramientas nativas; backend y Firebase pendientes de activación.
 
 > Leer antes de trabajar. Actualizar las secciones 0, 4 y 5 al terminar.
@@ -9,6 +11,8 @@ Actualización: 20 de octubre de 2026, America/Mexico_City. Codex: Wear OS 0.2 a
 Última actualización: 2026-10-18, 08:50 Europe/Berlin. Autor: Claude (agente general: interfaz viva y más animaciones).
 
 ## 0. Estado en una línea
+
+**Conector Code Dashboard → Estado IA (27 octubre, Codex):** rama `codex/workstation-connector`. Cola HTTPS saliente para desarrollar en esta PC Windows, con vinculación web MFA, credencial de equipo revocable, aprobación local por defecto, proyectos autorizados y ejecución en worktrees. UI en Cola, SQLite separado y pruebas de seguridad/integración. **Solo implementado localmente; no publicado ni conectado al VPS.** Guía y mensaje para el agente del servidor: `deploy/CONECTOR-EQUIPOS.md`. El usuario confirmó la URL existente y quiere gestionar la vinculación desde la web; no proporcionó acceso SSH.
 
 **Bloqueo de vinculación confirmado por HTTPS (21 octubre):** `/health` devuelve 200,
 pero `POST /api/wear/pair/start` devuelve 401 «Sesión expirada: inicia sesión de nuevo».
@@ -345,6 +349,13 @@ recuperación del servidor tmux del host. Todo eso se sustituyó.
   volver a poner `/new` en la barra.
 
 ## 4. Pendientes y límites de validación
+
+### Conector de equipos — 27 octubre
+
+- Aplicar el parche del conector mediante el agente del dashboard, con respaldo e integración que conserve el código desplegado. La rama parte de `Wear-OS`; no sustituir todo el árbol ni desplegar otras funciones por accidente.
+- Backend y frontend nuevos todavía no están en `https://codex-dashboard.devdj.lat`. No se ha creado ningún código, token ni trabajo real remoto.
+- Tras publicar: usuario genera código en Cola, lo pega en Estado IA → Conector, asocia proyecto local y activa recepción. La copia de Estado IA está en `F:\proyectos\utilizetokens`.
+- Android SDK y Java de Android Studio detectados en la PC; falta validar una tarea/compilación Android real. La integración probada usa un agente falso para no consumir cupo ni tocar proyectos del usuario.
 
 ### Bloqueo actual de vinculación — 21 octubre
 
@@ -816,6 +827,14 @@ el nombre reservado `cm-smoke-20261017`. Son pruebas que mutan un proyecto tempo
 no comandos de diagnóstico que deban lanzarse sin preparar y limpiar ese proyecto.
 
 ## 5. Implementación y verificaciones completadas
+
+### Conector de equipos — 27 octubre
+
+- `cm/workstations.py`: SQLite propio, código temporal de 256 bits, tokens por equipo solo como hash y vinculados a las credenciales web, expiración/revocación, ámbitos separados de web/reloj, cola idempotente y claim transaccional exclusivo, heartbeat, cancelación y finalización idempotente. Un lease perdido no vuelve a la cola.
+- `app.py`: altas/administración con MFA y API nativa de alcance limitado; mantiene Origin y límites de JSON. El token de PC no funciona como sesión web ni de reloj.
+- `frontend/src/Workstations.jsx`: vínculo, equipos, envío por proyecto/proveedor, cola, informes y revocación desde Cola. Conserva la cola del VPS.
+- **204 pruebas Python, 24 Node y build Vite aprobados.** Prueba HTTPS completa `tools/verify_workstation_bridge.py` con el cliente de Estado IA: aprobación local, proceso hijo real/agente falso, rama Git aislada, tests antes/después aprobados y entrega confirmada del informe; copia de trabajo original intacta.
+- No despliegue, cambios de autenticación real, tareas reales, APK ni gastos de modelos. Cambios ajenos `.github/.claude/` y `wear/app/google-services.json` conservados fuera del commit.
 
 ### Diagnóstico HTTPS de vinculación — 21 octubre
 

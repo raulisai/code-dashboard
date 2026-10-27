@@ -5,6 +5,7 @@ import {navigate, post, providerLabel, taskLabel} from '../lib.js';
 import {Empty, ProviderMark, StatusPill, toast} from '../ui.jsx';
 import {Approval} from '../workspace/Agent.jsx';
 import {projectLabel, taskHref} from '../general.js';
+import Workstations from '../Workstations.jsx';
 
 export default function Queue() {
   const {state, refresh} = useApp();
@@ -27,6 +28,7 @@ export default function Queue() {
       <select className="select" value={project} onChange={e => setProject(e.target.value)} aria-label="Filtrar por proyecto"><option value="">Todos los proyectos</option>{state.projects.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}</select>
     </header>
     <div className="status-line"><span className={state.tmux_ok ? 'dot on' : 'dot bad'}/>{state.automation?.last_message}</div>
+    <Workstations/>
     {(state.approvals || []).length > 0 && <section className="block"><div className="block-head"><h2>Esperan tu aprobación</h2></div>
       {state.approvals.map(approval => <div key={approval.id} className="approval-wrap"><a className="link-small" href={taskHref(approval)} onClick={e => { e.preventDefault(); navigate(taskHref(approval)); }}>{projectLabel(approval.project)}<ChevronRight size={12}/></a><Approval approval={approval} onAnswer={answer}/></div>)}
     </section>}

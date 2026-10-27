@@ -1,5 +1,7 @@
 # Codex Manager
 
+Conector para desarrollar en una PC Windows con Estado IA: [activación, vinculación web y seguridad](deploy/CONECTOR-EQUIPOS.md).
+
 Cliente nativo para Galaxy Watch / Wear OS: [guía del MVP del agente general](wear/README.md).
 
 Entorno de desarrollo del VPS, disponible en https://codex-dashboard.devdj.lat.

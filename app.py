@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from aiohttp import web, WSMsgType
 
-from cm import auth, chats, config, dockerapi, files, gitops, lifecycle, media, projects, push, quota, repos, runs, speech, tasks, tmux, wear, websecurity, terminal as terminalio
+from cm import auth, chats, config, dockerapi, files, gitops, lifecycle, media, projects, push, quota, repos, runs, speech, tasks, tmux, wear, websecurity, workstations, terminal as terminalio
 
 EXECUTOR = ThreadPoolExecutor(max_workers=16, thread_name_prefix='cm-io')
 PUBLIC_API = {'/api/login', '/api/login/mfa', '/api/logout'}
@@ -61,14 +61,20 @@ async def security(request, handler):
             if request.method not in ('GET', 'HEAD', 'OPTIONS') or path == '/api/term':
                 if not same_origin(request): return fail('Origen no permitido', 403)
             authorization = request.headers.get('Authorization', '')
-            if authorization.startswith('Bearer ') and path not in wear.NATIVE_PATHS:
+            if authorization.startswith('Bearer ') and path not in wear.NATIVE_PATHS | workstations.NATIVE_PATHS:
                 return fail('La credencial del reloj solo permite usar la API del reloj', 403)
-            if path in wear.NATIVE_PATHS:
+            if path in workstations.NATIVE_PATHS:
+                if request.headers.get('Origin'):
+                    return fail('La API de equipos no admite peticiones del navegador', 403)
+                token = authorization.removeprefix('Bearer ') if authorization.startswith('Bearer ') else ''
+                session = await blocking(workstations.authenticate, token)
+                request[websecurity.SESSION_KEY] = session
+            elif path in wear.NATIVE_PATHS:
                 token = authorization.removeprefix('Bearer ') if authorization.startswith('Bearer ') else ''
                 session = await blocking(wear.authenticate, token)
                 if not session: return fail('Vuelve a vincular el reloj desde la web', 401)
                 request[websecurity.SESSION_KEY] = session
-            elif path not in PUBLIC_API and path not in wear.PUBLIC_PATHS:
+            elif path not in PUBLIC_API and path not in wear.PUBLIC_PATHS | workstations.PUBLIC_PATHS:
                 session = await blocking(auth.authenticate, request.cookies.get(auth.COOKIE), path != '/api/term')
                 if not session:
                     return fail('Sesión expirada: inicia sesión de nuevo', 401)
@@ -105,7 +111,7 @@ async def body(request):
     if WEAR_ACTION_BODY in request: return request[WEAR_ACTION_BODY]
     if request.content_type != 'application/json':
         raise web.HTTPUnsupportedMediaType(reason='Se requiere JSON')
-    limit = 16384 if request.path.startswith('/api/wear/') else 4096 if request.path.startswith(('/api/login', '/api/security')) else 6 * 1024 * 1024
+    limit = 256000 if request.path.startswith('/api/workstation') else 16384 if request.path.startswith('/api/wear/') else 4096 if request.path.startswith(('/api/login', '/api/security')) else 6 * 1024 * 1024
     if request.content_length and request.content_length > limit:
         raise web.HTTPRequestEntityTooLarge(max_size=limit, actual_size=request.content_length)
     raw = bytearray()
@@ -882,6 +888,37 @@ async def health(request):
     return web.Response(text='ok')
 
 
+async def workstation_overview(request):
+    return reply(await blocking(workstations.overview))
+
+
+async def workstation_admin(request):
+    data = await body(request)
+    action = data.get('action')
+    if action == 'enroll':
+        return reply(await blocking(workstations.create_enrollment, data.get('label'), data.get('projects')), 201)
+    if action == 'revoke':
+        return reply(await blocking(workstations.revoke, data.get('device')))
+    if action == 'enqueue':
+        return reply(await blocking(workstations.enqueue, data.get('device'), data.get('project'),
+                                   data.get('provider'), data.get('prompt'), data.get('request_key')), 201)
+    if action == 'cancel':
+        return reply(await blocking(workstations.cancel, data.get('job')))
+    return fail('Acción de equipo inválida')
+
+
+async def workstation_native(request):
+    data = await body(request)
+    if request.path in workstations.PUBLIC_PATHS:
+        return reply(await blocking(workstations.enroll, data.get('code'), data.get('token')))
+    token = request.headers.get('Authorization', '').removeprefix('Bearer ')
+    if request.path.endswith('/poll'):
+        return reply(await blocking(workstations.poll, token, data.get('projects')))
+    if request.path.endswith('/heartbeat'):
+        return reply(await blocking(workstations.heartbeat, token, data.get('job'), data.get('lease')))
+    return reply(await blocking(workstations.finish, token, data.get('job'), data.get('lease'), data.get('result')))
+
+
 def make_app():
     app = web.Application(middlewares=[websecurity.middleware, security], client_max_size=25 * 1024 * 1024)
     app.on_response_prepare.append(websecurity.prepare)
@@ -893,6 +930,9 @@ def make_app():
         web.post('/api/security/confirm', security_confirm), web.post('/api/security/recovery', security_recovery),
         web.post('/api/security/revoke', security_revoke),
         web.get('/api/state', state), web.get('/api/settings', settings_get), web.post('/api/settings', settings_post),
+        web.get('/api/workstations', workstation_overview), web.post('/api/workstations', workstation_admin),
+        web.post('/api/workstation/enroll', workstation_native), web.post('/api/workstation/poll', workstation_native),
+        web.post('/api/workstation/heartbeat', workstation_native), web.post('/api/workstation/finish', workstation_native),
         web.get('/api/push', push_get), web.post('/api/push', push_post),
         web.post('/api/wear/pair/start', wear_start), web.post('/api/wear/pair/poll', wear_poll),
         web.post('/api/wear/pair/approve', wear_approve), web.get('/api/wear/state', wear_state),
