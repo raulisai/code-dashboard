@@ -21,7 +21,7 @@ NATIVE_PATHS = {'/api/workstation/poll', '/api/workstation/heartbeat', '/api/wor
 LEASE_SECONDS = 120
 TOKEN_SECONDS = 90 * 86400
 MAX_PROMPT = 20000
-PROJECT_ID = r'[a-z0-9](?:[a-z0-9_-]{0,38}[a-z0-9])?'
+PROJECT_ID = r'[A-Za-z0-9](?:[A-Za-z0-9_-]{0,38}[A-Za-z0-9])?'
 
 
 def reject(message, status=400):
